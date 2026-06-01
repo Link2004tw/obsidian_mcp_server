@@ -7,7 +7,7 @@ __pycache__/
 dist/
 build/
 *.whl
-
+dev/improvement.md
 # Virtual environments
 .venv/
 venv/

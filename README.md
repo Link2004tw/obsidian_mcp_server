@@ -2,6 +2,18 @@
 
 A local, privacy-first knowledge management layer for Obsidian vaults. Provides semantic search, automatic tagging, backlink generation, and natural language querying — all running locally with no cloud dependency.
 
+---
+
+## What's New (v0.2.0)
+
+- **Search Improvements** — Hybrid BM25 + semantic search, metadata filtering (tags, folder, date range), passage-level snippets, query expansion via LLM, diversity penalties, and LRU result caching
+- **Todo Management System** — Full CRUD MCP tools for a `todos.md` file, smart queries (overdue, blocked, by project), LLM-powered features (natural language creation, priority/due-date suggestion), and reporting (burndown, overdue summary)
+- **Advanced Features** — Incremental indexing via file hashes (no more full re-indexes), entity extraction at index time, note summaries, switchable embedding models, performance metrics (`get_index_stats`), batch operations, and semantic deduplication
+
+See the [full task list](dev/tasks.md) for details.
+
+---
+
 ## Quick Start
 
 ### 1. Install dependencies

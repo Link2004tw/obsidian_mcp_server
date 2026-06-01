@@ -72,6 +72,43 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 
 ---
 
+## Phase 5 — Search Improvements
+
+| # | Task | Description | Difficulty | Priority | Status |
+|---|---|---|---|---|---|
+| 5.1 | Hybrid search (BM25 + semantic) | Implement BM25/TF-IDF keyword fallback when semantic results are low-confidence; blend scores with configurable `keyword_weight` and `min_similarity` | High | P2 | ⬜ |
+| 5.2 | Metadata filtering & faceting | Add optional filters to `search_notes`: `tags`, `folder`, `exclude_tags`, `date_after`, `date_before` for scoped searches | Medium | P2 | ⬜ |
+| 5.3 | Passage-level search returns | Return matching chunk snippet with context window instead of full note path; include `snippet`, `matched_chunk_idx`, `similarity_score` | Medium | P2 | ⬜ |
+| 5.4 | Query expansion (LLM) | Use Qwen to expand queries with synonyms before embedding (e.g., "PID tuning" → "proportional integral derivative control, feedback loop") | Medium | P3 | ⬜ |
+| 5.5 | Relevance threshold & diversity | Add `min_similarity` filter; implement `diversity_penalty` to penalize results too similar to already-selected ones | Low | P3 | ⬜ |
+| 5.6 | Search caching | LRU cache (`max_size=100`) for query embeddings + results; common queries become ~1ms after first run | Low | P3 | ⬜ |
+
+## Phase 6 — Todo Management System
+
+| # | Task | Description | Difficulty | Priority | Status |
+|---|---|---|---|---|---|
+| 6.1 | Todo file structure | Design `todos.md` format: YAML frontmatter (last_synced, counts), Markdown headers for projects, `[ ]`/`[x]` checkboxes, inline metadata in parentheses `(due:, priority:, tags:)` | Medium | P2 | ⬜ |
+| 6.2 | Auto-create todo file | `ensure_todos_file_exists()` on first index/MCP startup or when file is deleted; create default templated `todos.md` | Low | P2 | ⬜ |
+| 6.3 | Core todo MCP tools | Implement `get_todos`, `add_todo`, `complete_todo`, `update_todo`, `delete_todo`, `sync_todos` — full CRUD against `todos.md` | High | P1 | ⬜ |
+| 6.4 | Smart todo queries | `get_overdue_todos`, `get_blocked_todos`, `get_todos_by_project`, `search_todos` (semantic), `get_todo_stats` | Medium | P2 | ⬜ |
+| 6.5 | LLM-powered todo features | Natural language todo creation (`add_todo_from_natural_language`), `suggest_task_priority`, `suggest_due_date`, `suggest_task_splitting`, `suggest_task_dependencies` | High | P3 | ⬜ |
+| 6.6 | Todo reporting & metrics | `get_todos_by_priority`, `get_burndown_chart(project, days)`, `get_overdue_summary`, `estimate_completion_date` | Medium | P3 | ⬜ |
+| 6.7 | Todo integration with vault | `get_todos_for_note`, `get_notes_for_todo`, `link_todo_to_notes`, `ask_vault_about_todo`, `ask_vault_about_todos` | Medium | P3 | ⬜ |
+
+## Phase 7 — Advanced Features
+
+| # | Task | Description | Difficulty | Priority | Status |
+|---|---|---|---|---|---|
+| 7.1 | Incremental indexing via file hashes | Track file content hashes in JSON; only re-embed changed notes (delta updates) instead of re-indexing entire vault | Medium | P2 | ⬜ |
+| 7.2 | Entity extraction | Extract named entities (people, projects, hardware, dates, concepts) using LLM during indexing; store in ChromaDB metadata for `search_by_entity` | High | P3 | ⬜ |
+| 7.3 | Note summaries | Pre-generate 1-2 sentence summaries during indexing; `ask_vault` uses summary first, loads full content only if needed | High | P3 | ⬜ |
+| 7.4 | Embedding model switching | Make embedding model configurable at runtime; implement `switch_embedding_model(new_model)` that re-indexes with new model | Medium | P3 | ⬜ |
+| 7.5 | Performance metrics | `get_index_stats()` exposing total_notes, total_chunks, index_size_mb, avg_query_latency_ms, cache_hit_rate, last_sync, embedding_model | Medium | P3 | ⬜ |
+| 7.6 | Batch operations | `batch_search(queries)` returning `dict[query, results]`; `batch_tag_notes(note_paths, tags)` for bulk tagging | Low | P3 | ⬜ |
+| 7.7 | Semantic deduplication | `find_duplicate_notes(threshold)` using embedding similarity to detect near-duplicate note pairs | Low | P3 | ⬜ |
+
+---
+
 ## Summary
 
 | Phase | Total Tasks | P1 | P2 | P3 | Done | Remaining |
@@ -80,4 +117,7 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | Phase 2 — MCP Server | 11 | 7 | 3 | 1 | 11 | 0 |
 | Phase 3 — LLM + Agent | 10 | 6 | 3 | 1 | 10 | 0 |
 | Phase 4 — Polish | 9 | 4 | 3 | 2 | 9 | 0 |
-| **Total** | **40** | **25** | **10** | **5** | **40** | **0** |
+| Phase 5 — Search Improvements | 6 | 0 | 3 | 3 | 0 | 6 |
+| Phase 6 — Todo Management | 7 | 1 | 3 | 3 | 0 | 7 |
+| Phase 7 — Advanced Features | 7 | 0 | 1 | 6 | 0 | 7 |
+| **Total** | **60** | **26** | **17** | **17** | **40** | **20** |
