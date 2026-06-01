@@ -1,0 +1,199 @@
+openapi: 3.1.0
+info:
+  title: Obsidian AI MCP Server
+  description: Local AI knowledge management layer for Obsidian vaults
+  version: 1.0.0
+
+servers:
+  - url: stdio
+    description: Stdio transport (MCP)
+
+paths: {}
+
+components:
+  schemas:
+    SearchNotes:
+      type: function
+      function:
+        name: search_notes
+        description: Search notes semantically. Returns top-k results with paths and snippets.
+        parameters:
+          type: object
+          properties:
+            query:
+              type: string
+              description: The search query string
+            n:
+              type: integer
+              description: Number of results to return (default 5)
+              default: 5
+          required:
+            - query
+        returns:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+                description: Path to the note file
+              title:
+                type: string
+                description: Title of the note
+              chunk:
+                type: integer
+                description: Chunk index within the note
+              distance:
+                type: number
+                format: float
+                description: Semantic distance score
+
+    ReadNote:
+      type: function
+      function:
+        name: read_note
+        description: Read the full content of a note by path.
+        parameters:
+          type: object
+          properties:
+            path:
+              type: string
+              description: Path to the note file relative to vault root
+          required:
+            - path
+        returns:
+          type: string
+          description: Full content of the note in Markdown
+
+    WriteNote:
+      type: function
+      function:
+        name: write_note
+        description: Create or overwrite a note with the given content.
+        parameters:
+          type: object
+          properties:
+            path:
+              type: string
+              description: Path to the note file relative to vault root
+            content:
+              type: string
+              description: Full Markdown content to write
+          required:
+            - path
+            - content
+        returns:
+          type: string
+          description: Confirmation message
+
+    ListNotes:
+      type: function
+      function:
+        name: list_notes
+        description: Return a list of all note paths in the vault.
+        parameters:
+          type: object
+          properties: {}
+        returns:
+          type: array
+          items:
+            type: string
+          description: List of note file paths
+
+    AddTags:
+      type: function
+      function:
+        name: add_tags
+        description: Add tags to a note's YAML frontmatter. Creates frontmatter if absent.
+        parameters:
+          type: object
+          properties:
+            path:
+              type: string
+              description: Path to the note file
+            tags:
+              type: array
+              items:
+                type: string
+              description: List of tags to add
+          required:
+            - path
+            - tags
+        returns:
+          type: string
+          description: Confirmation with final tags list
+
+    CreateBacklink:
+      type: function
+      function:
+        name: create_backlink
+        description: Create mutual [[backlinks]] between two notes.
+        parameters:
+          type: object
+          properties:
+            path_a:
+              type: string
+              description: Path to the first note
+            path_b:
+              type: string
+              description: Path to the second note
+          required:
+            - path_a
+            - path_b
+        returns:
+          type: string
+          description: Confirmation message
+
+    SyncIndex:
+      type: function
+      function:
+        name: sync_index
+        description: Re-run the full indexer pipeline. Returns count of notes indexed.
+        parameters:
+          type: object
+          properties: {}
+        returns:
+          type: string
+          description: Index sync completion status
+
+    AskVault:
+      type: function
+      function:
+        name: ask_vault
+        description: Ask a question about your Obsidian vault. Searches relevant notes and uses LLM to answer.
+        parameters:
+          type: object
+          properties:
+            question:
+              type: string
+              description: Natural language question about vault contents
+            top_k:
+              type: integer
+              description: Number of notes to retrieve for context (default 3)
+              default: 3
+          required:
+            - question
+        returns:
+          type: string
+          description: LLM-generated answer based on vault content
+
+    TagNotes:
+      type: function
+      function:
+        name: tag_notes
+        description: Search notes matching a query and auto-suggest tags using LLM.
+        parameters:
+          type: object
+          properties:
+            query:
+              type: string
+              description: Search query to find relevant notes
+            top_k:
+              type: integer
+              description: Number of notes to tag (default 5)
+              default: 5
+          required:
+            - query
+        returns:
+          type: string
+          description: Confirmation with tag map
