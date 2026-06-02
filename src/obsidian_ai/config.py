@@ -12,15 +12,12 @@ obsidian_port = int(os.getenv("OBSIDIAN_PORT", "27123"))
 
 
 class _RedactedString(str):
-    """String subclass that hides its value in repr/str to prevent accidental logging."""
+    """String subclass that hides its value in repr to prevent accidental logging."""
 
     def __repr__(self) -> str:
         if self:
             return f"'***{self[-4:]}'" if len(self) > 4 else "'****'"
         return "''"
-
-    def __str__(self) -> str:
-        return self.__repr__()
 
 
 obsidian_api_key: str = _RedactedString(os.getenv("OBSIDIAN_API_KEY", ""))
@@ -34,3 +31,4 @@ chroma_path = os.getenv("CHROMA_PATH", os.path.join(_project_root, "data", "chro
 vault_path = os.getenv("VAULT_PATH", "")
 
 EXCLUDE_PATTERNS = ["_gsdata_", ".gsbak", ".git", "__pycache__", "node_modules", ".excalidraw.md"]
+todo_file = os.getenv("TODO_FILE", "todos.md")

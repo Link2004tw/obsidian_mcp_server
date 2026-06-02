@@ -1,0 +1,16 @@
+{
+  "edges": {
+    "Courses/Data science Course/All about thinking.md": [],
+    "Courses/Data science Course/Core analytical Skills.md": [],
+    "Courses/Data science Course/Data Ecosystems.md": [],
+    "Courses/Data science Course/Data analysis.md": [],
+    "Courses/Data science Course/How data informs better Decisions.md": []
+  },
+  "title_map": {
+    "all about thinking": "Courses/Data science Course/All about thinking.md",
+    "core analytical skills": "Courses/Data science Course/Core analytical Skills.md",
+    "data ecosystems": "Courses/Data science Course/Data Ecosystems.md",
+    "data analysis": "Courses/Data science Course/Data analysis.md",
+    "how data informs better decisions": "Courses/Data science Course/How data informs better Decisions.md"
+  }
+}

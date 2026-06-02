@@ -1,9 +1,17 @@
+import json
 import os
+import threading
+import time
+
 import requests
 
 from . import config
 
 REQUEST_TIMEOUT = 30
+_NOTE_LIST_CACHE: list[str] | None = None
+_NOTE_LIST_CACHE_LOCK = threading.Lock()
+_NOTE_LIST_CACHE_TTL = 300  # 5 minutes
+_NOTE_LIST_CACHE_PATH: str | None = None
 
 
 def _validate_path(path: str) -> str:
@@ -61,8 +69,67 @@ def _walk_dir(path: str = "") -> list[str]:
     return results
 
 
-def list_all_notes() -> list[str]:
-    return _walk_dir()
+def _get_note_list_cache_path() -> str:
+    global _NOTE_LIST_CACHE_PATH
+    if _NOTE_LIST_CACHE_PATH is not None:
+        return _NOTE_LIST_CACHE_PATH
+    cache_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        os.path.dirname(config.chroma_path) if os.path.sep in config.chroma_path else "data",
+    )
+    os.makedirs(cache_dir, exist_ok=True)
+    _NOTE_LIST_CACHE_PATH = os.path.join(cache_dir, "note_paths.json")
+    return _NOTE_LIST_CACHE_PATH
+
+
+def list_all_notes(*, force_rebuild: bool = False) -> list[str]:
+    """Return a list of all note paths in the vault, with local caching.
+
+    Caches to ``data/note_paths.json`` with a 5-minute TTL to avoid
+    repeated slow API directory walks.
+
+    Args:
+        force_rebuild: if True, skip cache and re-fetch from the API.
+
+    Returns:
+        A list of vault-relative ``.md`` paths.
+    """
+    global _NOTE_LIST_CACHE
+
+    with _NOTE_LIST_CACHE_LOCK:
+        if not force_rebuild and _NOTE_LIST_CACHE is not None:
+            return list(_NOTE_LIST_CACHE)
+
+        cache_path = _get_note_list_cache_path()
+
+        if not force_rebuild:
+            try:
+                age = time.time() - os.path.getmtime(cache_path)
+                if age < _NOTE_LIST_CACHE_TTL:
+                    with open(cache_path, encoding="utf-8") as f:
+                        cached = json.load(f)
+                    _NOTE_LIST_CACHE = list(cached)
+                    return list(_NOTE_LIST_CACHE)
+            except (OSError, json.JSONDecodeError, ValueError):
+                pass
+
+        notes = _walk_dir()
+
+        try:
+            with open(cache_path, "w", encoding="utf-8") as f:
+                json.dump(notes, f, ensure_ascii=False)
+        except OSError:
+            pass
+
+        _NOTE_LIST_CACHE = list(notes)
+        return notes
+
+
+def clear_note_cache() -> None:
+    """Clear the in-memory note list cache (next call re-fetches from API)."""
+    global _NOTE_LIST_CACHE
+    with _NOTE_LIST_CACHE_LOCK:
+        _NOTE_LIST_CACHE = None
 
 
 def list_folder(folder_path: str) -> list[str]:

@@ -4,12 +4,19 @@ from datetime import datetime
 
 from fastmcp import FastMCP
 
-from . import chroma_store, config, indexer, keyword_search, llm_client, obsidian_client, pipelines
+from . import chroma_store, config, graph_store, indexer, keyword_search, llm_client, obsidian_client, pipelines
 from .frontmatter import add_tags as fm_add_tags
 from .frontmatter import parse as fm_parse
 from .frontmatter import remove_tags as fm_remove_tags
 from .frontmatter import set_tags as fm_set_tags
 from .logger import get_logger, log_error
+from .todos import add_todo as td_add  # td_ prefix avoids name clash
+from .todos import complete_todo as td_complete
+from .todos import delete_todo as td_delete
+from .todos import ensure_todos_file_exists as td_ensure
+from .todos import get_todos as td_get
+from .todos import sync_todos as td_sync
+from .todos import update_todo as td_update
 
 log = get_logger("obsidian_ai.mcp_server", log_file="mcp_calls.log")
 
@@ -297,6 +304,53 @@ def get_index_stats() -> str:
         return f"Error: {e}"
 
 
+def _apply_graph_boost(passages: list[dict], graph_depth: int = 1, graph_weight: float = 0.2) -> list[dict]:
+    """Expand search results by following wiki-links from result notes.
+
+    For each result note, BFS up to graph_depth hops to find connected notes.
+    Connected notes get a score boost proportional to graph_weight.
+    Returns deduplicated, re-sorted results.
+    """
+    # Collect unique paths
+    result_paths = set(p["path"] for p in passages)
+
+    # BFS from each result note
+    graph_connected: dict[str, float] = {}  # path -> max proximity score (1/depth)
+    for path in result_paths:
+        neighbors = graph_store.bfs(path, max_depth=graph_depth)
+        for neighbor_path, trace in neighbors.items():
+            if neighbor_path not in result_paths:
+                depth = len(trace) - 1
+                proximity = 1.0 / depth if depth > 0 else 0.5
+                graph_connected[neighbor_path] = max(
+                    graph_connected.get(neighbor_path, 0), proximity
+                )
+
+    if not graph_connected:
+        return passages
+
+    # Fetch content for connected notes and create passage entries
+    for neighbor_path, proximity in graph_connected.items():
+        try:
+            content = obsidian_client.get_note(neighbor_path)
+            _, body = fm_parse(content)
+            snippet = _truncate_snippet(body[:500])
+            title = os.path.splitext(os.path.basename(neighbor_path))[0]
+            passages.append({
+                "path": neighbor_path,
+                "title": title,
+                "matched_chunk_idx": 0,
+                "similarity_score": round(proximity * graph_weight, 4),
+                "snippet": snippet,
+                "is_graph_connected": True,
+            })
+        except Exception:
+            pass
+
+    # Re-sort by score
+    return sorted(passages, key=lambda x: x["similarity_score"], reverse=True)
+
+
 @mcp.tool()
 def search_notes(
     query: str,
@@ -310,6 +364,9 @@ def search_notes(
     keyword_weight: float = 0.0,
     min_similarity: float | None = None,
     diversity_penalty: float = 0.0,
+    use_graph: bool = False,
+    graph_depth: int = 1,
+    graph_weight: float = 0.2,
 ) -> list[dict]:
     """Search notes semantically with optional metadata filters.
 
@@ -331,6 +388,9 @@ def search_notes(
     - ``diversity_penalty`` — diversity penalty factor (0.0 = none, 0.5 = moderate,
       1.0 = aggressive). Penalises passages from a note that already has results
       selected, encouraging diverse sources.
+    - ``use_graph`` — if True, expand results via wiki-link graph traversal
+    - ``graph_depth`` — max hops for graph traversal (default 1)
+    - ``graph_weight`` — weight for graph proximity boost (0.0-1.0, default 0.2)
 
     Returns:
         A list of dicts, each with:
@@ -341,9 +401,10 @@ def search_notes(
         - ``snippet`` — the matching passage text, trimmed to ~400 chars
     """
     log.info(
-        "search_notes — query=%s, n=%s, tags=%s, exclude_tags=%s, folder=%s, date_after=%s, date_before=%s, expand=%s, kw_weight=%s, min_sim=%s, div_penalty=%s",
+        "search_notes — query=%s, n=%s, tags=%s, exclude_tags=%s, folder=%s, date_after=%s, date_before=%s, expand=%s, kw_weight=%s, min_sim=%s, div_penalty=%s, use_graph=%s, graph_depth=%s, graph_weight=%s",
         query, n, tags, exclude_tags, folder, date_after, date_before,
         expand_query, keyword_weight, min_similarity, diversity_penalty,
+        use_graph, graph_depth, graph_weight,
     )
     try:
         where = _build_search_where(tags=tags, folder=folder, date_after=date_after, date_before=date_before)
@@ -363,6 +424,11 @@ def search_notes(
             where=where,
             exclude_tags=exclude_tags,
         )
+
+        # Graph-augmented expansion
+        if use_graph and passages:
+            passages = _apply_graph_boost(passages, graph_depth=graph_depth, graph_weight=graph_weight)
+
         log.info("search_notes — %s passages returned", len(passages))
         return passages
     except Exception as e:
@@ -590,11 +656,18 @@ def sync_index() -> str:
 
 
 @mcp.tool()
-def ask_vault(question: str, top_k: int = 3) -> str:
-    """Ask a question about your Obsidian vault. Searches relevant notes and uses LLM to answer."""
+def ask_vault(question: str, top_k: int = 3, use_graph: bool = False, graph_depth: int = 1) -> str:
+    """Ask a question about your Obsidian vault. Searches relevant notes and uses LLM to answer.
+
+    Args:
+        question: the question to answer.
+        top_k: number of top notes to retrieve.
+        use_graph: if True, expand results by following wiki-links to find connected notes.
+        graph_depth: max hops for graph traversal (default 1).
+    """
     log.info(f"ask_vault — {question}")
     try:
-        answer = pipelines.query(question, top_k=top_k)
+        answer = pipelines.query(question, top_k=top_k, use_graph=use_graph, graph_depth=graph_depth)
         log.info(f"ask_vault — done, {len(answer)} chars")
         return answer
     except Exception as e:
@@ -647,6 +720,443 @@ def get_subject(subject: str, top_k: int = 10, keyword_weight: float = 0.3) -> l
     except Exception as e:
         log_error(log, "get_subject FAILED", exc=e, subject=subject)
         return []
+
+
+# ── Graph RAG Tools ──────────────────────────────────────────────────
+
+
+@mcp.tool()
+def get_backlinks(path: str) -> list[dict]:
+    """Return all notes linking TO the given note (incoming wiki-link edges).
+
+    Args:
+        path: vault-relative path to the note (e.g., "Folder/Note.md").
+
+    Returns:
+        List of dicts with path, title, and trace (the path from source to target).
+    """
+    log.info(f"get_backlinks — {path}")
+    try:
+        sources = graph_store.get_backlinks(path)
+        results = []
+        for src in sources:
+            title = os.path.splitext(os.path.basename(src))[0]
+            results.append({"path": src, "title": title})
+        log.info(f"get_backlinks — {len(results)} results")
+        return results
+    except Exception as e:
+        log_error(log, "get_backlinks FAILED", exc=e, path=path)
+        return []
+
+
+@mcp.tool()
+def get_linked_notes(path: str) -> list[dict]:
+    """Return all notes the given note links TO (outgoing wiki-link edges).
+
+    Args:
+        path: vault-relative path to the note.
+
+    Returns:
+        List of dicts with path and title.
+    """
+    log.info(f"get_linked_notes — {path}")
+    try:
+        targets = graph_store.get_outgoing(path)
+        results = []
+        for tgt in targets:
+            title = os.path.splitext(os.path.basename(tgt))[0]
+            results.append({"path": tgt, "title": title})
+        log.info(f"get_linked_notes — {len(results)} results")
+        return results
+    except Exception as e:
+        log_error(log, "get_linked_notes FAILED", exc=e, path=path)
+        return []
+
+
+@mcp.tool()
+def get_broken_links() -> list[dict]:
+    """Find wiki-links across all notes that don't resolve to any existing note.
+
+    Returns:
+        List of dicts with source_path and link_target (the unresolved wiki-link).
+    """
+    log.info("get_broken_links")
+    try:
+        notes = obsidian_client.list_all_notes()
+        all_contents: dict[str, str] = {}
+        for path in notes:
+            try:
+                all_contents[path] = obsidian_client.get_note(path)
+            except Exception:
+                pass
+        broken = graph_store.get_broken_links(all_contents)
+        log.info(f"get_broken_links — {len(broken)} broken links")
+        return broken
+    except Exception as e:
+        log_error(log, "get_broken_links FAILED", exc=e)
+        return []
+
+
+@mcp.tool()
+def get_graph_stats() -> dict:
+    """Return graph statistics: total nodes, edges, average degree, isolated notes, and hubs.
+
+    Returns:
+        Dict with nodes, edges, avg_degree, isolated_count, isolated (list), hubs (top 5 by degree).
+    """
+    log.info("get_graph_stats")
+    try:
+        stats = graph_store.stats()
+        log.info(f"get_graph_stats — {stats['nodes']} nodes, {stats['edges']} edges")
+        return stats
+    except Exception as e:
+        log_error(log, "get_graph_stats FAILED", exc=e)
+        return {}
+
+
+@mcp.tool()
+def multi_hop_traversal(path: str, max_depth: int = 2) -> list[dict]:
+    """Perform BFS graph traversal from a seed note up to N hops.
+
+    Returns all reachable notes with path traces for explainability
+    (e.g., A -> B -> C shows the chain of wiki-links).
+
+    Args:
+        path: vault-relative path to the seed note.
+        max_depth: maximum number of hops to traverse (default 2).
+
+    Returns:
+        List of dicts with path, title, depth (hop count), and trace (list of paths from seed).
+    """
+    log.info(f"multi_hop_traversal — {path}, depth={max_depth}")
+    try:
+        results = graph_store.bfs(path, max_depth=max_depth)
+        output = []
+        for tgt_path, trace in results.items():
+            title = os.path.splitext(os.path.basename(tgt_path))[0]
+            output.append({
+                "path": tgt_path,
+                "title": title,
+                "depth": len(trace) - 1,
+                "trace": trace,
+            })
+        log.info(f"multi_hop_traversal — {len(output)} reachable notes")
+        return output
+    except Exception as e:
+        log_error(log, "multi_hop_traversal FAILED", exc=e, path=path)
+        return []
+
+
+@mcp.tool()
+def related_notes(path: str, k: int = 10, graph_weight: float = 0.3) -> list[dict]:
+    """Find notes related to a given note using both semantic similarity and graph proximity.
+
+    Combines embedding-based semantic search with wiki-link graph traversal.
+    Notes connected via wiki-links get a proximity boost proportional to graph_weight.
+
+    Args:
+        path: vault-relative path to the source note.
+        k: number of results to return.
+        graph_weight: how much to weight graph proximity (0.0 = pure semantic, 1.0 = pure graph).
+
+    Returns:
+        List of dicts with path, title, similarity_score, and is_graph_connected (bool).
+    """
+    log.info(f"related_notes — {path}, k={k}, graph_weight={graph_weight}")
+    try:
+        # Get the source note's title
+        title = os.path.splitext(os.path.basename(path))[0]
+
+        # Semantic search: get notes with same title (the source note's chunks)
+        source_docs = chroma_store.get_by_title(title)
+        if not source_docs:
+            log.warning(f"related_notes — source note not found in index: {path}")
+            return []
+
+        # Use the first chunk's embedding to search
+        # Since we don't store embeddings separately, we search by title proximity
+        # Get graph neighbors
+        graph_neighbors = set(graph_store.get_outgoing(path))
+        graph_neighbors.update(graph_store.get_backlinks(path))
+        graph_neighbors.discard(path)
+
+        # Semantic search using the source note's content
+        source_content = obsidian_client.get_note(path)
+        meta, body = fm_parse(source_content)
+        query_text = body[:500]  # Use first 500 chars as query
+
+        semantic_results = _hybrid_search(
+            queries=[query_text],
+            n=k * 2,
+            keyword_weight=0.3,
+        )
+
+        # Filter out the source note itself
+        semantic_results = [r for r in semantic_results if r["path"] != path]
+
+        # Score blending
+        seen: dict[str, dict] = {}
+        for rank, result in enumerate(semantic_results):
+            p = result["path"]
+            semantic_score = result.get("similarity_score", 0.5)
+            graph_score = 1.0 if p in graph_neighbors else 0.0
+            combined = semantic_score * (1 - graph_weight) + graph_score * graph_weight
+
+            if p not in seen or combined > seen[p]["similarity_score"]:
+                seen[p] = {
+                    "path": p,
+                    "title": result["title"],
+                    "similarity_score": round(combined, 4),
+                    "is_graph_connected": p in graph_neighbors,
+                }
+
+        # Add graph-only neighbors not in semantic results
+        for neighbor in graph_neighbors:
+            if neighbor not in seen:
+                seen[neighbor] = {
+                    "path": neighbor,
+                    "title": os.path.splitext(os.path.basename(neighbor))[0],
+                    "similarity_score": round(graph_weight, 4),
+                    "is_graph_connected": True,
+                }
+
+        results = sorted(seen.values(), key=lambda x: x["similarity_score"], reverse=True)[:k]
+        log.info(f"related_notes — {len(results)} results")
+        return results
+    except Exception as e:
+        log_error(log, "related_notes FAILED", exc=e, path=path)
+        return []
+
+
+@mcp.tool()
+def export_graph(format: str = "json") -> str:
+    """Export the wiki-link graph in DOT or JSON format for external visualization.
+
+    Args:
+        format: ``"dot"`` for Graphviz DOT format, ``"json"`` for JSON.
+
+    Returns:
+        The graph representation as a string.
+    """
+    log.info(f"export_graph — format={format}")
+    try:
+        if format == "dot":
+            return graph_store.to_dot()
+        data = graph_store.to_dict()
+        import json
+        return json.dumps(data, indent=2, ensure_ascii=False)
+    except Exception as e:
+        log_error(log, "export_graph FAILED", exc=e, format=format)
+        return f"Error: {e}"
+
+
+@mcp.tool()
+def get_orphan_notes() -> list[str]:
+    """Find notes with no incoming or outgoing wiki-links (orphans).
+
+    Useful for vault cleanup — these notes are disconnected from the rest.
+    """
+    log.info("get_orphan_notes")
+    try:
+        orphans = graph_store.get_orphans()
+        log.info(f"get_orphan_notes — {len(orphans)} orphans")
+        return orphans
+    except Exception as e:
+        log_error(log, "get_orphan_notes FAILED", exc=e)
+        return []
+
+
+@mcp.tool()
+def get_communities() -> dict[str, list[str]]:
+    """Detect communities in the wiki-link graph using label propagation.
+
+    Notes in the same community are densely connected via wiki-links.
+    Useful for understanding vault structure and grouping related notes.
+
+    Returns:
+        Dict mapping community IDs (integers as strings) to lists of note paths.
+    """
+    log.info("get_communities")
+    try:
+        communities = graph_store.label_propagation()
+        result: dict[str, list[str]] = {}
+        for path, cid in communities.items():
+            key = str(cid)
+            result.setdefault(key, []).append(path)
+        for k in result:
+            result[k].sort()
+        log.info(f"get_communities — {len(result)} communities found")
+        return result
+    except Exception as e:
+        log_error(log, "get_communities FAILED", exc=e)
+        return {}
+
+
+# ── Todo Tools ───────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def ensure_todo_file() -> str:
+    """Create a default todos.md file in the vault if it doesn't exist."""
+    log.info("ensure_todo_file")
+    try:
+        result = td_ensure()
+        log.info(f"ensure_todo_file — {result}")
+        return result
+    except Exception as e:
+        log_error(log, "ensure_todo_file FAILED", exc=e)
+        return f"Error: {e}"
+
+
+@mcp.tool()
+def get_todos(project: str = "", status: str = "") -> list[dict]:
+    """List todos from todos.md, optionally filtered by project and/or status.
+
+    Args:
+        project: filter by project name (case-sensitive). Empty string = all projects.
+        status: ``"pending"`` or ``"completed"``. Empty string = all statuses.
+
+    Returns:
+        List of todo dicts, each with id, task, status, due, priority, tags, project.
+    """
+    log.info(f"get_todos — project={project!r}, status={status!r}")
+    try:
+        proj = project if project else None
+        st = status if status else None
+        todos = td_get(project=proj, status=st)
+        log.info(f"get_todos — {len(todos)} results")
+        return todos
+    except Exception as e:
+        log_error(log, "get_todos FAILED", exc=e)
+        return []
+
+
+@mcp.tool()
+def add_todo(project: str, task: str, due: str = "", priority: str = "", tags: list[str] | None = None) -> dict:
+    """Add a new todo task to a project.
+
+    Args:
+        project: project name (e.g. ``"Work"``, ``"Personal"``). Created if it doesn't exist.
+        task: the task description.
+        due: optional due date in ``YYYY-MM-DD`` format.
+        priority: ``"high"``, ``"medium"``, or ``"low"``.
+        tags: optional list of tag strings.
+
+    Returns:
+        The created todo dict with its assigned id.
+    """
+    log.info(f"add_todo — project={project!r}, task={task!r}")
+    try:
+        todo = td_add(
+            project=project,
+            task=task,
+            due=due if due else None,
+            priority=priority if priority else None,
+            tags=tags or None,
+        )
+        log.info(f"add_todo — created {todo['id']}")
+        return todo
+    except Exception as e:
+        log_error(log, "add_todo FAILED", exc=e)
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def complete_todo(todo_id: str) -> dict:
+    """Mark a todo as completed by its id.
+
+    Args:
+        todo_id: the id of the todo (returned by get_todos or add_todo).
+
+    Returns:
+        The updated todo dict, or an error dict if the id is not found.
+    """
+    log.info(f"complete_todo — {todo_id}")
+    try:
+        todo = td_complete(todo_id)
+        if todo is None:
+            return {"error": f"Todo not found: {todo_id}"}
+        log.info(f"complete_todo — {todo_id} done")
+        return todo
+    except Exception as e:
+        log_error(log, "complete_todo FAILED", exc=e)
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def update_todo(todo_id: str, task: str = "", due: str = "", priority: str = "", tags: list[str] | None = None, project: str = "", status: str = "") -> dict:
+    """Update one or more fields of an existing todo.
+
+    Args:
+        todo_id: the id of the todo to update.
+        task: new task description (leave empty to keep current).
+        due: new due date (leave empty to keep current).
+        priority: new priority (leave empty to keep current).
+        tags: new tags list (leave empty to keep current).
+        project: move to a different project (leave empty to keep current).
+        status: ``"pending"`` or ``"completed"`` (leave empty to keep current).
+
+    Returns:
+        The updated todo dict, or an error dict if the id is not found.
+    """
+    log.info(f"update_todo — {todo_id}")
+    try:
+        kwargs: dict = {}
+        if task:
+            kwargs["task"] = task
+        if due:
+            kwargs["due"] = due
+        if priority:
+            kwargs["priority"] = priority
+        if tags is not None:
+            kwargs["tags"] = tags
+        if project:
+            kwargs["project"] = project
+        if status:
+            kwargs["status"] = status
+        todo = td_update(todo_id, **kwargs)
+        if todo is None:
+            return {"error": f"Todo not found: {todo_id}"}
+        log.info(f"update_todo — {todo_id} updated")
+        return todo
+    except Exception as e:
+        log_error(log, "update_todo FAILED", exc=e)
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def delete_todo(todo_id: str) -> dict:
+    """Delete a todo by its id.
+
+    Args:
+        todo_id: the id of the todo to delete.
+
+    Returns:
+        A dict with ``success: true`` or ``success: false`` with an error message.
+    """
+    log.info(f"delete_todo — {todo_id}")
+    try:
+        ok = td_delete(todo_id)
+        if not ok:
+            return {"success": False, "error": f"Todo not found: {todo_id}"}
+        log.info(f"delete_todo — {todo_id} deleted")
+        return {"success": True}
+    except Exception as e:
+        log_error(log, "delete_todo FAILED", exc=e)
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def sync_todos() -> dict:
+    """Recalculate todo counts in the todos.md frontmatter and rewrite the file."""
+    log.info("sync_todos")
+    try:
+        result = td_sync()
+        log.info(f"sync_todos — {result}")
+        return result
+    except Exception as e:
+        log_error(log, "sync_todos FAILED", exc=e)
+        return {"error": str(e)}
 
 
 if __name__ == "__main__":

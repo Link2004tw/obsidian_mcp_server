@@ -2,23 +2,46 @@ import chromadb
 
 from . import config
 
-_client = chromadb.PersistentClient(path=config.chroma_path)
-_collection = _client.get_or_create_collection("notes")
+_client = None
+_collection = None
+
+
+def _ensure_init():
+    """Lazily initialize the ChromaDB client on first use."""
+    global _client, _collection
+    if _collection is not None:
+        return
+    init()
+
+
+def init(path: str | None = None) -> None:
+    """Initialize or reinitialize the ChromaDB client.
+
+    Args:
+        path: directory for the persistent ChromaDB store.
+              Defaults to ``config.chroma_path``.
+    """
+    global _client, _collection
+    _client = chromadb.PersistentClient(path=path or config.chroma_path)
+    _collection = _client.get_or_create_collection("notes")
 
 
 def upsert(path: str, chunk_idx: int, embedding: list[float], metadata: dict, document: str | None = None) -> None:
+    _ensure_init()
     doc_id = f"{path}::chunk_{chunk_idx}"
     docs = [document] if document else None
     _collection.upsert(ids=[doc_id], embeddings=[embedding], metadatas=[metadata], documents=docs)  # type: ignore[arg-type]
 
 
 def delete_by_path(path: str) -> None:
+    _ensure_init()
     results = _collection.get(where={"path": path})
     if results["ids"]:
         _collection.delete(ids=results["ids"])
 
 
 def get_by_path(path: str) -> list[dict]:
+    _ensure_init()
     results = _collection.get(where={"path": path})
     metadatas = results["metadatas"]
     if metadatas is None:
@@ -28,6 +51,7 @@ def get_by_path(path: str) -> list[dict]:
 
 def get_by_title(title: str) -> list[dict]:
     """Look up notes by title (basename without extension). Returns metadata dicts."""
+    _ensure_init()
     results = _collection.get(where={"title": title})
     raw = results["metadatas"]
     metadatas: list[dict] = raw if raw is not None else []  # type: ignore[assignment]
@@ -42,6 +66,7 @@ def get_by_title(title: str) -> list[dict]:
 
 
 def count() -> int:
+    _ensure_init()
     return _collection.count()
 
 
@@ -53,6 +78,7 @@ def get_all_documents() -> tuple[list[str], list[str | None], list[dict]]:
         documents are the stored chunk texts (may be None for old entries),
         and metadatas are the metadata dicts for each entry.
     """
+    _ensure_init()
     all_data = _collection.get(include=["documents", "metadatas"])  # type: ignore[arg-type]
     ids: list[str] = all_data["ids"] if all_data["ids"] else []
     docs: list[str | None] = all_data["documents"] if all_data["documents"] else []  # type: ignore[assignment]
@@ -66,6 +92,7 @@ def get_metadata_by_ids(ids: list[str]) -> tuple[list[dict], list[str | None]]:
     Returns:
         (metadatas, documents) aligned with the requested IDs.
     """
+    _ensure_init()
     all_data = _collection.get(ids=ids, include=["metadatas", "documents"])  # type: ignore[arg-type]
     metadatas: list[dict] = all_data["metadatas"] if all_data["metadatas"] else []  # type: ignore[assignment]
     docs: list[str | None] = all_data["documents"] if all_data["documents"] else []  # type: ignore[assignment]
@@ -74,6 +101,7 @@ def get_metadata_by_ids(ids: list[str]) -> tuple[list[dict], list[str | None]]:
 
 def get_index_stats() -> dict:
     """Return index statistics as a dict."""
+    _ensure_init()
     total_chunks = _collection.count()
     # Get all unique note paths
     all_metadatas = _collection.get()["metadatas"] or []
@@ -94,6 +122,7 @@ def search_by_tags(tags: list[str], n: int = 20) -> list[dict]:
     """
     if not tags:
         return []
+    _ensure_init()
     conditions = [{"tags_str": {"$contains": f",{tag},"}} for tag in tags]
     where: dict = {"$and": conditions} if len(conditions) > 1 else conditions[0]
 
@@ -132,6 +161,7 @@ def dedup_paths(results: list[dict]) -> list[tuple[str, str]]:
 
 
 def query(embedding: list[float], n: int = 5, where: dict | None = None) -> list[dict]:
+    _ensure_init()
     kwargs: dict = {"query_embeddings": [embedding], "n_results": n}
     if where is not None:
         kwargs["where"] = where

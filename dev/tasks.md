@@ -18,6 +18,10 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | 1.8  | Test semantic search manually          | Run a Python snippet: embed a query string, call `chroma_store.query()`, print top-5 results                     | Low        | P1       | ✅     |
 | 1.9  | Handle empty and very short notes      | Skip notes under ~20 tokens to avoid noisy embeddings                                                            | Low        | P2       | ✅     |
 | 1.10 | Store note word count in metadata      | Useful later for context-stuffing decisions in the LLM layer                                                     | Low        | P3       | ✅     |
+| 1.11 | Heading-aware chunking                 | Improve `chunk_text()` to split on Markdown headings (`#`, `##`, etc.) instead of raw word boundaries, so chunks preserve semantic sections | Medium     | P2       | ✅     |
+| 1.12 | Chunk-level heading context            | Prefix each chunk with its parent heading path (e.g., "## Setup > ## Config") so retrieved snippets carry structural context | Medium     | P2       | ✅     |
+| 1.13 | Store frontmatter fields in metadata   | Extract and store additional frontmatter fields beyond tags: `created`, `modified`, `aliases`, `cssclasses` as ChromaDB metadata | Medium     | P3       | ✅     |
+| 1.14 | Store wiki-links in ChromaDB metadata  | Parse `[[wiki-links]]` from note content and store as `links_str` metadata field (comma-delimited) for filtering during search | Medium     | P2       | ✅     |
 
 ---
 
@@ -98,9 +102,9 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 
 | #   | Task                        | Description                                                                                                                                                                        | Difficulty | Priority | Status |
 | --- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------- | ------ |
-| 6.1 | Todo file structure         | Design `todos.md` format: YAML frontmatter (last_synced, counts), Markdown headers for projects, `[ ]`/`[x]` checkboxes, inline metadata in parentheses `(due:, priority:, tags:)` | Medium     | P2       | ⬜     |
-| 6.2 | Auto-create todo file       | `ensure_todos_file_exists()` on first index/MCP startup or when file is deleted; create default templated `todos.md`                                                               | Low        | P2       | ⬜     |
-| 6.3 | Core todo MCP tools         | Implement `get_todos`, `add_todo`, `complete_todo`, `update_todo`, `delete_todo`, `sync_todos` — full CRUD against `todos.md`                                                      | High       | P1       | ⬜     |
+| 6.1 | Todo file structure         | Design `todos.md` format: YAML frontmatter (last_synced, counts), Markdown headers for projects, `[ ]`/`[x]` checkboxes, inline metadata in parentheses `(due:, priority:, tags:)` | Medium     | P2       | ✅     |
+| 6.2 | Auto-create todo file       | `ensure_todos_file_exists()` on first index/MCP startup or when file is deleted; create default templated `todos.md`                                                               | Low        | P2       | ✅     |
+| 6.3 | Core todo MCP tools         | Implement `get_todos`, `add_todo`, `complete_todo`, `update_todo`, `delete_todo`, `sync_todos` — full CRUD against `todos.md`                                                      | High       | P1       | ✅     |
 | 6.4 | Smart todo queries          | `get_overdue_todos`, `get_blocked_todos`, `get_todos_by_project`, `search_todos` (semantic), `get_todo_stats`                                                                      | Medium     | P2       | ⬜     |
 | 6.5 | LLM-powered todo features   | Natural language todo creation (`add_todo_from_natural_language`), `suggest_task_priority`, `suggest_due_date`, `suggest_task_splitting`, `suggest_task_dependencies`              | High       | P3       | ⬜     |
 | 6.6 | Todo reporting & metrics    | `get_todos_by_priority`, `get_burndown_chart(project, days)`, `get_overdue_summary`, `estimate_completion_date`                                                                    | Medium     | P3       | ⬜     |
@@ -114,11 +118,19 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | --- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------- | ------ |
 | 7.1 | Incremental indexing via file hashes | Track file content hashes in JSON; only re-embed changed notes (delta updates) instead of re-indexing entire vault                                | Medium     | P2       | ⬜     |
 | 7.2 | Entity extraction                    | Extract named entities (people, projects, hardware, dates, concepts) using LLM during indexing; store in ChromaDB metadata for `search_by_entity` | High       | P3       | ⬜     |
+| 7.2a | Entity extraction prompt pipeline    | Design and test the LLM prompt that extracts entities from note content; return structured JSON with entity type, name, and confidence               | Medium     | P2       | ⬜     |
+| 7.2b | Entity deduplication and normalization | Merge entity variants (e.g., "ESP32" vs "esp32", "Maria" vs "maria"); maintain canonical entity names and alias mapping                             | Medium     | P2       | ⬜     |
 | 7.3 | Note summaries                       | Pre-generate 1-2 sentence summaries during indexing; `ask_vault` uses summary first, loads full content only if needed                            | High       | P3       | ⬜     |
 | 7.4 | Embedding model switching            | Make embedding model configurable at runtime; implement `switch_embedding_model(new_model)` that re-indexes with new model                        | Medium     | P3       | ⬜     |
 | 7.5 | Performance metrics                  | `get_index_stats()` exposing total_notes, total_chunks, index_size_mb, avg_query_latency_ms, cache_hit_rate, last_sync, embedding_model           | Medium     | P3       | ✅     |
 | 7.6 | Batch operations                     | `batch_search(queries)` returning `dict[query, results]`; `batch_tag_notes(note_paths, tags)` for bulk tagging                                    | Low        | P3       | ⬜     |
 | 7.7 | Semantic deduplication               | `find_duplicate_notes(threshold)` using embedding similarity to detect near-duplicate note pairs                                                  | Low        | P3       | ⬜     |
+| 7.8 | Entity index store                   | Build and maintain an inverted index mapping entities → list of notes that mention them; persist as JSON in `data/` and rebuild on index sync     | Medium     | P2       | ⬜     |
+| 7.9 | Implement `search_by_entity` tool    | New MCP tool that takes an entity name and returns all notes mentioning it, with snippet showing the context of mention                           | Medium     | P2       | ⬜     |
+| 7.10 | Implement `summarize_topic` tool    | New MCP tool that takes a topic, finds all related notes via semantic+entity+graph search, and returns an LLM-generated consolidated summary     | High       | P2       | ⬜     |
+| 7.11 | Multi-strategy retrieval pipeline    | Combine semantic search, entity lookup, and graph traversal into a single retrieval pipeline that merges and deduplicates results before LLM      | High       | P1       | ⬜     |
+| 7.12 | Group search results by note         | Add `group_by_note` option to `search_notes` that collapses chunk-level results into note-level summaries with top matching snippet per note       | Low        | P2       | ⬜     |
+| 7.13 | Agentic tool-use prompts             | Design system prompts that instruct the local LLM to autonomously choose between `search_notes`, `related_notes`, `search_by_entity`, `summarize_topic` based on user intent | High | P3       | ⬜     |
 
 ---
 
@@ -129,7 +141,7 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | 8.1 | Apply indexing throughput optimizations  | Implement faster indexing by (a) parallelizing/batching embeddings during indexing and/or (b) reusing chunk embeddings when identical text occurs across notes | Medium     | P2       | ✅     |
 | 8.2 | Optimize incremental indexing skip check | Remove per-note Chroma reads in `_should_skip_by_mtime()` by preloading note→stored_mtime map once per index run (or redesign note-level metadata storage)     | Low        | P2       | ✅     |
 | 8.3 | Reduce watcher thrash                    | Replace per-event `threading.Thread` spawning with a queue/coalescing strategy so many file save events do not cause redundant indexing/deleting work          | Medium     | P2       | ✅     |
-| 8.4 | Cache query expansion                    | Add caching for LLM-generated expanded query phrases to reduce repeated expansion cost in search flows                                                         | Low        | P3       | ⬜     |
+| 8.4 | Cache query expansion                    | Add caching for LLM-generated expanded query phrases to reduce repeated expansion cost in search flows                                                         | Low        | P3       | ✅     |
 
 ---
 
@@ -163,7 +175,7 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | 11.2 | Extract `truncate_snippet()` utility          | `raw_snippet[:400]` + `"..."` pattern repeated 5+ times in `mcp_server.py` — make a shared utility with configurable max length                                | Low        | P2       | ✅     |
 | 11.3 | Normalize snippet sizes to shared constant    | Inconsistent: 400 chars in `search_notes`, 300 in `get_subject`/`search_by_tags`/`get_related_notes` — define `SNIPPET_MAX_CHARS` constant                     | Low        | P3       | ✅     |
 | 11.4 | Lazy-import heavy deps in `__init__.py`       | Currently loads ChromaDB and all deps at import time even if only `config` or `frontmatter` is needed                                                           | Low        | P3       | ✅     |
-| 11.5 | Make `chroma_store` configurable at init      | Module-level `PersistentClient` created at import time — accept a path parameter so it can be reconfigured and tested without monkey-patching                   | Medium     | P3       | ⬜     |
+| 11.5 | Make `chroma_store` configurable at init      | Module-level `PersistentClient` created at import time — accept a path parameter so it can be reconfigured and tested without monkey-patching                   | Medium     | P3       | ✅     |
 
 ---
 
@@ -171,13 +183,13 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 
 | #   | Task                                  | Description                                                                                                                                                  | Difficulty | Priority | Status |
 | --- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- | -------- | ------ |
-| 12.1 | Tests for `keyword_search.py`        | Test BM25 index build, search, ensure_index, and edge cases (empty index, single doc)                                                                        | Medium     | P2       | ⬜     |
-| 12.2 | Tests for `indexer.py`               | Test `chunk_text`, `_sanitize`, `_word_count`, `_extract_tags`, `_should_skip_by_mtime`, and the mtime map builder                                            | Medium     | P2       | ⬜     |
-| 12.3 | Tests for `chroma_store.py`          | Test upsert, query, delete_by_path, get_by_path, get_all_documents, count — with a temp ChromaDB instance                                                   | Medium     | P2       | ⬜     |
-| 12.4 | Tests for `llm_client.py`            | Test embed and chat functions with mocked HTTP responses (no live Ollama needed)                                                                             | Medium     | P2       | ⬜     |
-| 12.5 | Tests for `mcp_server.py` tools      | Test search_notes, read_note, write_note, add_tags, create_backlink, get_related_notes, get_subject — with mocked deps                                        | High       | P2       | ⬜     |
-| 12.6 | Tests for `config.py`                | Test env var loading, defaults, missing vars                                                                                                                 | Low        | P3       | ⬜     |
-| 12.7 | Tests for `logger.py`                | Test log file creation, error formatting                                                                                                                     | Low        | P3       | ⬜     |
+| 12.1 | Tests for `keyword_search.py`        | Test BM25 index build, search, ensure_index, and edge cases (empty index, single doc)                                                                        | Medium     | P2       | ✅     |
+| 12.2 | Tests for `indexer.py`               | Test `chunk_text`, `_sanitize`, `_word_count`, `_extract_tags`, `_should_skip_by_mtime`, and the mtime map builder                                            | Medium     | P2       | ✅     |
+| 12.3 | Tests for `chroma_store.py`          | Test upsert, query, delete_by_path, get_by_path, get_all_documents, count — with a temp ChromaDB instance                                                   | Medium     | P2       | ✅     |
+| 12.4 | Tests for `llm_client.py`            | Test embed and chat functions with mocked HTTP responses (no live Ollama needed)                                                                             | Medium     | P2       | ✅     |
+| 12.5 | Tests for `mcp_server.py` tools      | Test search_notes, read_note, write_note, add_tags, create_backlink, get_related_notes, get_subject — with mocked deps                                        | High       | P2       | ✅     |
+| 12.6 | Tests for `config.py`                | Test env var loading, defaults, missing vars                                                                                                                 | Low        | P3       | ✅     |
+| 12.7 | Tests for `logger.py`                | Test log file creation, error formatting                                                                                                                     | Low        | P3       | ✅     |
 
 ---
 
@@ -190,21 +202,47 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 
 ---
 
+## Phase 14 — Graph RAG
+
+| #   | Task                                  | Description                                                                                                                                                  | Difficulty | Priority | Status |
+| --- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- | -------- | ------ |
+| 14.1 | Wiki-link parser                     | Extract `[[wiki-links]]` from note content during indexing; handle display text `[[Target\|Display]]`, strip section links `Note#section`, normalize case     | Medium     | P1       | ✅     |
+| 14.1a | Link resolution to file paths       | Resolve wiki-link titles to actual file paths by scanning vault (title → path mapping); handle duplicate titles and missing targets                           | Medium     | P1       | ✅     |
+| 14.2 | Graph data structure                 | Build and maintain an adjacency list (dict[path, set[target_path]]) representing wiki-link relationships between notes; store as pickle/JSON in `data/`       | Medium     | P1       | ✅     |
+| 14.2a | Graph rebuild on index sync          | On `sync_index()`, rebuild the full graph from scratch by re-parsing all notes; verify consistency between graph and ChromaDB                                | Medium     | P1       | ✅     |
+| 14.3 | Integrate parser into indexer        | During indexing, extract wiki-links from each note and update the graph; handle note renames/deletals that break links                                        | Medium     | P1       | ✅     |
+| 14.4 | Implement `get_backlinks(path)` tool | New MCP tool that returns all notes linking TO the given note (incoming edges)                                                                                | Low        | P1       | ✅     |
+| 14.5 | Implement `get_linked_notes(path)` tool | New MCP tool that returns all notes the given note links TO (outgoing edges)                                                                                 | Low        | P1       | ✅     |
+| 14.6 | Graph-augmented search               | Extend `_hybrid_search()` to also retrieve notes connected via wiki-links to initial results; apply configurable graph proximity boost to similarity scores   | High       | P1       | ✅     |
+| 14.7 | Add graph parameters to search       | Add `use_graph` (bool), `graph_depth` (int, default 1), `graph_weight` (float 0-1) parameters to `search_notes` tool for controlling graph retrieval         | Medium     | P2       | ✅     |
+| 14.8 | Broken link detection                | During indexing or via dedicated tool, identify wiki-links that point to non-existent notes; expose via `get_broken_links()` MCP tool                         | Medium     | P2       | ✅     |
+| 14.9 | Graph statistics                     | `get_graph_stats()` MCP tool returning total nodes, edges, avg degree, isolated notes, most-connected notes (hubs)                                             | Low        | P3       | ✅     |
+| 14.10 | Graph visualization export           | Export graph as DOT/JSON format for external visualization (Obsidian, Neo4j, etc.)                                                                            | Medium     | P3       | ✅     |
+| 14.11 | Orphan note detection                | Identify notes with no incoming or outgoing wiki-links; useful for vault cleanup                                                                              | Low        | P3       | ✅     |
+| 14.12 | Community detection                  | Implement label propagation clustering on the wiki-link graph; group notes into communities for higher-level navigation                            | High       | P3       | ✅     |
+| 14.13 | Entity-graph cross-reference         | Link extracted entities to the wiki-link graph so that searching for an entity also traverses to notes connected via both entity mention and wiki-links     | High       | P2       | ⬜     |
+| 14.14 | Multi-hop graph traversal            | Implement BFS/DFS graph traversal from seed notes up to N hops, returning all reachable notes with path traces (e.g., A → B → C) for explainability         | Medium     | P2       | ✅     |
+| 14.15 | Implement `related_notes(path, k)` tool | New MCP tool combining semantic similarity and graph proximity: returns top-k notes ranked by both embedding similarity and graph distance from source     | Medium     | P1       | ✅     |
+| 14.16 | Graph-aware `ask_vault`              | Enhance the RAG pipeline to use graph traversal for contextual expansion: after initial retrieval, follow links to find related context before generating answer | High | P1       | ✅     |
+
+---
+
 ## Summary
 
 | Phase                                         | Total Tasks | P1     | P2     | P3     | Done   | Remaining |
 | --------------------------------------------- | ----------- | ------ | ------ | ------ | ------ | --------- |
-| Phase 1 — Foundation                          | 10          | 8      | 1      | 1      | 10     | 0         |
+| Phase 1 — Foundation                          | 14          | 8      | 5      | 1      | 14     | 0         |
 | Phase 2 — MCP Server                          | 13          | 8      | 4      | 1      | 13     | 0         |
 | Phase 3 — LLM + Agent                         | 10          | 6      | 3      | 1      | 10     | 0         |
 | Phase 4 — Polish                              | 12          | 6      | 3      | 3      | 12     | 0         |
 | Phase 5 — Search Improvements                 | 10          | 3      | 4      | 3      | 10     | 0         |
-| Phase 6 — Todo Management                     | 7           | 1      | 3      | 3      | 0      | 7         |
-| Phase 7 — Advanced Features                   | 7           | 0      | 1      | 6      | 1      | 6         |
-| Phase 8 — Performance optimization follow-ups | 4           | 0      | 3      | 1      | 3      | 1         |
+| Phase 6 — Todo Management                     | 7           | 1      | 3      | 3      | 3      | 4         |
+| Phase 7 — Advanced Features                   | 15          | 1      | 7      | 7      | 1      | 14        |
+| Phase 8 — Performance optimization follow-ups | 4           | 0      | 3      | 1      | 4      | 0         |
 | Phase 9 — Bug Fixes                           | 4           | 2      | 2      | 0      | 4      | 0         |
 | Phase 10 — Security Hardening                 | 4           | 1      | 3      | 0      | 4      | 0         |
-| Phase 11 — Tech Debt / Refactoring            | 5           | 0      | 2      | 3      | 4      | 1         |
-| Phase 12 — Test Coverage                      | 7           | 0      | 5      | 2      | 0      | 7         |
+| Phase 11 — Tech Debt / Refactoring            | 5           | 0      | 2      | 3      | 5      | 0         |
+| Phase 12 — Test Coverage                      | 7           | 0      | 5      | 2      | 7      | 0         |
 | Phase 13 — New Functionality                  | 2           | 0      | 1      | 1      | 2      | 0         |
-| **Total**                                     | **99**      | **35** | **35** | **29** | **71** | **28**    |
+| Phase 14 — Graph RAG                          | 18          | 10     | 4      | 4      | 16     | 2         |
+| **Total**                                     | **127**     | **58** | **49** | **40** | **103** | **24**    |
