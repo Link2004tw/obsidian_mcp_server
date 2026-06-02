@@ -1,0 +1,17 @@
+warning: in the working copy of '.gitignore', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'cli.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'dev/tasks.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'pyproject.toml', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/obsidian_ai/chroma_store.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/obsidian_ai/indexer.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/obsidian_ai/llm_client.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/obsidian_ai/mcp_server.py', LF will be replaced by CRLF the next time Git touches it
+ .gitignore                      |   4 [32m+[m
+ cli.py                          | 108 [32m++++++[m[31m----[m
+ dev/tasks.md                    | 200 [32m++++++++++[m[31m---------[m
+ pyproject.toml                  |   1 [32m+[m
+ src/obsidian_ai/chroma_store.py |  53 [32m++++[m[31m-[m
+ src/obsidian_ai/indexer.py      | 116 [32m+++++++++[m[31m--[m
+ src/obsidian_ai/llm_client.py   |  23 [32m+++[m
+ src/obsidian_ai/mcp_server.py   | 430 [32m++++++++++++++++++++++++++++++++++++[m[31m----[m
+ 8 files changed, 746 insertions(+), 189 deletions(-)

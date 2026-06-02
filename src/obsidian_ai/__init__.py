@@ -1,13 +1,11 @@
 """Obsidian AI Knowledge System — semantic search, tagging, and backlinks for Obsidian vaults."""
 
-from . import chroma_store, config, indexer, llm_client, mcp_server, obsidian_client, pipelines
+# Lightweight imports only — heavy deps (chroma_store, indexer, llm_client,
+# mcp_server, pipelines) are imported lazily to avoid loading ChromaDB and
+# other heavy dependencies when only config or obsidian_client is needed.
+from . import config, obsidian_client
 
 __all__ = [
     "config",
     "obsidian_client",
-    "llm_client",
-    "chroma_store",
-    "indexer",
-    "pipelines",
-    "mcp_server",
 ]

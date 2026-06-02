@@ -1,8 +1,22 @@
+import os
 import requests
 
 from . import config
 
 REQUEST_TIMEOUT = 30
+
+
+def _validate_path(path: str) -> str:
+    """Validate and normalise a vault-relative path.
+
+    Rejects paths containing ``..`` segments to prevent directory traversal.
+    Strips leading slashes and ensures the path ends with ``.md`` for note operations.
+    """
+    path = path.lstrip("/")
+    # Reject path traversal
+    if ".." in path.split("/") or ".." in path.split(os.sep):
+        raise ValueError(f"Invalid path (contains '..'): {path}")
+    return path
 
 
 def _is_excluded(entry: str) -> bool:
@@ -23,7 +37,7 @@ def _headers():
 
 
 def _list_dir(path: str = "") -> list[str]:
-    clean_path = path.lstrip("/")
+    clean_path = _validate_path(path) if path else ""
     url = f"{_base_url()}/vault/{clean_path}" if clean_path else f"{_base_url()}/vault/"
     resp = requests.get(url, headers=_headers(), timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()
@@ -55,7 +69,7 @@ def list_folder(folder_path: str) -> list[str]:
     """List entries directly inside a specific folder (non-recursive).
     Returns both ``.md`` files and subdirectory names (with trailing ``/``).
     """
-    clean = folder_path.lstrip("/")
+    clean = _validate_path(folder_path) if folder_path else ""
     results = []
     for entry in _list_dir(clean):
         if _is_excluded(entry):
@@ -69,11 +83,11 @@ def list_folder(folder_path: str) -> list[str]:
 
 def list_folder_deep(folder_path: str) -> list[str]:
     """List all .md file paths within a specific folder (recursive, includes subdirectories)."""
-    return _walk_dir(folder_path.lstrip("/"))
+    return _walk_dir(_validate_path(folder_path) if folder_path else "")
 
 
 def get_note(path: str) -> str:
-    path = path.lstrip("/")
+    path = _validate_path(path)
     if not path.endswith(".md"):
         path = path.rstrip("/") + ".md"
     resp = requests.get(f"{_base_url()}/vault/{path}", headers=_headers(), timeout=REQUEST_TIMEOUT)
@@ -82,7 +96,7 @@ def get_note(path: str) -> str:
 
 
 def put_note(path: str, content: str) -> None:
-    path = path.lstrip("/")
+    path = _validate_path(path)
     resp = requests.put(
         f"{_base_url()}/vault/{path}",
         headers=_headers(),

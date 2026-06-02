@@ -1,3 +1,4 @@
+import functools
 import time
 
 import requests
@@ -11,6 +12,8 @@ INITIAL_BACKOFF = 2
 MAX_CONTEXT_WORDS = 3000
 
 RETRYABLE_STATUSES = {429, 502, 503}
+
+_EMBED_CACHE_SIZE = 100
 
 
 def _request_with_retry(method, url, *, timeout, **kwargs):
@@ -48,6 +51,26 @@ def embed(text: str) -> list[float]:
     embedding = data["embedding"]
     assert isinstance(embedding, list)
     return embedding
+
+
+def clear_embed_cache() -> None:
+    """Clear the LRU cache for ``embed()``."""
+    embed.cache_clear()
+
+
+def embed_cache_info() -> dict:
+    """Return embedding cache stats: hits, misses, maxsize, currsize."""
+    info = embed.cache_info()
+    return {
+        "hits": info.hits,
+        "misses": info.misses,
+        "maxsize": info.maxsize,
+        "currsize": info.currsize,
+    }
+
+
+# Apply LRU cache after the function definition (works around the decoration ordering)
+embed = functools.lru_cache(maxsize=_EMBED_CACHE_SIZE)(embed)  # type: ignore[misc]
 
 
 def chat(messages: list[dict], model: str | None = None, think: bool = True) -> str:

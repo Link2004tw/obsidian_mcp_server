@@ -9,7 +9,21 @@ load_dotenv(_env_path, override=True)
 
 obsidian_host = os.getenv("OBSIDIAN_HOST", "localhost")
 obsidian_port = int(os.getenv("OBSIDIAN_PORT", "27123"))
-obsidian_api_key = os.getenv("OBSIDIAN_API_KEY", "")
+
+
+class _RedactedString(str):
+    """String subclass that hides its value in repr/str to prevent accidental logging."""
+
+    def __repr__(self) -> str:
+        if self:
+            return f"'***{self[-4:]}'" if len(self) > 4 else "'****'"
+        return "''"
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
+
+obsidian_api_key: str = _RedactedString(os.getenv("OBSIDIAN_API_KEY", ""))
 
 ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 ollama_embed_model = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")

@@ -8,6 +8,10 @@ dist/
 build/
 *.whl
 dev/improvement.md
+
+# Optimization notes
+optimizations.md
+
 # Virtual environments
 .venv/
 venv/

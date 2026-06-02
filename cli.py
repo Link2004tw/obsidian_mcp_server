@@ -65,6 +65,52 @@ def cmd_watch():
     watch()
 
 
+def _dispatch(args) -> tuple[str, dict]:
+    """Return (tool_name, tool_args) for the given parsed args.
+
+    Uses a dispatch dict of callables so that ``args`` attributes are only
+    accessed for the command being run (not eagerly for all commands).
+    """
+    dispatch = {
+        "search": lambda: (
+            "search_notes",
+            _clean_args({
+                "query": args.query,
+                "n": args.n,
+                "tags": args.tags,
+                "exclude_tags": args.exclude_tags,
+                "folder": args.folder,
+                "date_after": args.date_after,
+                "date_before": args.date_before,
+                "expand_query": args.expand,
+                "keyword_weight": args.keyword_weight,
+                "min_similarity": args.min_similarity,
+                "diversity_penalty": args.diversity_penalty,
+            }),
+        ),
+        "read": lambda: ("read_note", {"path": args.path}),
+        "write": lambda: ("write_note", {"path": args.path, "content": args.content}),
+        "list-all": lambda: ("list_all_notes", {}),
+        "list-folder": lambda: ("list_folder", {"folder_path": args.folder_path}),
+        "list-folder-deep": lambda: ("list_folder_deep", {"folder_path": args.folder_path}),
+        "read-by-title": lambda: (
+            "read_note_by_title",
+            _clean_args({"title": args.title, "folder_path": args.folder_path}),
+        ),
+        "search-by-tags": lambda: ("search_by_tags", {"tags": args.tags, "n": args.n}),
+        "add-tags": lambda: ("add_tags", {"path": args.path, "tags": args.tags}),
+        "create-backlink": lambda: (
+            "create_backlink",
+            {"path_a": args.path_a, "path_b": args.path_b},
+        ),
+        "stats": lambda: ("get_index_stats", {}),
+        "sync": lambda: ("sync_index", {}),
+        "ask": lambda: ("ask_vault", {"question": args.question, "top_k": args.top_k}),
+        "tag-notes": lambda: ("tag_notes", {"query": args.query, "top_k": args.top_k}),
+    }
+    return dispatch[args.command]()
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="obsidian-ai CLI — talks to the MCP server via stdio"
@@ -80,6 +126,30 @@ def main():
     p.add_argument("--folder", default=None, help="Filter by folder path")
     p.add_argument("--date-after", default=None, help="Filter by mtime after ISO date (2024-06-01)")
     p.add_argument("--date-before", default=None, help="Filter by mtime before ISO date (2024-12-31)")
+    p.add_argument(
+        "--expand",
+        action="store_true",
+        default=False,
+        help="Expand query with LLM-generated synonyms for broader search",
+    )
+    p.add_argument(
+        "--keyword-weight",
+        type=float,
+        default=0.0,
+        help="BM25 keyword blend weight (0.0 = pure semantic, 0.3 = 30%% keyword)",
+    )
+    p.add_argument(
+        "--min-similarity",
+        type=float,
+        default=None,
+        help="Minimum similarity score threshold (0-1)",
+    )
+    p.add_argument(
+        "--diversity-penalty",
+        type=float,
+        default=0.0,
+        help="Diversity penalty factor (0.0=none, 0.5=moderate, 1.0=aggressive)",
+    )
 
     # read
     p = sub.add_parser("read", help="Read full note content by path")
@@ -165,42 +235,8 @@ def main():
         cmd_watch()
         return
 
-    # ── map CLI command → MCP tool ──────────────────────────────
-    tool_map = {
-        "search": (
-            "search_notes",
-            _clean_args({
-                "query": args.query,
-                "n": args.n,
-                "tags": args.tags,
-                "exclude_tags": args.exclude_tags,
-                "folder": args.folder,
-                "date_after": args.date_after,
-                "date_before": args.date_before,
-            }),
-        ),
-        "read": ("read_note", {"path": args.path}),
-        "write": ("write_note", {"path": args.path, "content": args.content}),
-        "list-all": ("list_all_notes", {}),
-        "list-folder": ("list_folder", {"folder_path": args.folder_path}),
-        "list-folder-deep": ("list_folder_deep", {"folder_path": args.folder_path}),
-        "read-by-title": (
-            "read_note_by_title",
-            _clean_args({"title": args.title, "folder_path": args.folder_path}),
-        ),
-        "search-by-tags": ("search_by_tags", {"tags": args.tags, "n": args.n}),
-        "add-tags": ("add_tags", {"path": args.path, "tags": args.tags}),
-        "create-backlink": (
-            "create_backlink",
-            {"path_a": args.path_a, "path_b": args.path_b},
-        ),
-        "stats": ("get_index_stats", {}),
-        "sync": ("sync_index", {}),
-        "ask": ("ask_vault", {"question": args.question, "top_k": args.top_k}),
-        "tag-notes": ("tag_notes", {"query": args.query, "top_k": args.top_k}),
-    }
-
-    tool_name, tool_args = tool_map[args.command]
+    # ── dispatch to MCP tool ────────────────────────────────────
+    tool_name, tool_args = _dispatch(args)
     asyncio.run(_call_tool(tool_name, tool_args))
 
 

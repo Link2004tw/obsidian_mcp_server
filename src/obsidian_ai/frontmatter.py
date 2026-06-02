@@ -43,3 +43,27 @@ def add_tags(content: str, tags: list[str]) -> str:
     meta["tags"] = existing
 
     return build(meta, body)
+
+
+def remove_tags(content: str, tags: list[str]) -> str:
+    """Remove specific tags from note content's YAML frontmatter.
+
+    Silently ignores tags that don't exist.
+    """
+    meta, body = parse(content)
+    existing = meta.get("tags", [])
+    if isinstance(existing, str):
+        existing = [existing]
+    tags_set = set(tags)
+    meta["tags"] = [t for t in existing if t not in tags_set]
+    return build(meta, body)
+
+
+def set_tags(content: str, tags: list[str]) -> str:
+    """Replace all tags in note content's YAML frontmatter with the given list.
+
+    Creates frontmatter if absent.
+    """
+    meta, body = parse(content)
+    meta["tags"] = list(tags)
+    return build(meta, body)
