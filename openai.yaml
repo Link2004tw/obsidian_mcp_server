@@ -16,7 +16,9 @@ components:
       type: function
       function:
         name: search_notes
-        description: Search notes semantically. Returns top-k results with paths and snippets.
+        description: >
+          Search notes semantically with optional metadata filters.
+          Supports filtering by tags, folder, exclude_tags, and date range (mtime).
         parameters:
           type: object
           properties:
@@ -27,6 +29,25 @@ components:
               type: integer
               description: Number of results to return (default 5)
               default: 5
+            tags:
+              type: array
+              items:
+                type: string
+              description: Optional — only notes with ALL of these tags
+            exclude_tags:
+              type: array
+              items:
+                type: string
+              description: Optional — exclude notes with ANY of these tags
+            folder:
+              type: string
+              description: Optional — only notes inside this vault-relative folder
+            date_after:
+              type: string
+              description: Optional — ISO date (e.g. 2024-06-01), filter by file mtime
+            date_before:
+              type: string
+              description: Optional — ISO date (e.g. 2024-12-31), filter by file mtime
           required:
             - query
         returns:
@@ -86,10 +107,10 @@ components:
           type: string
           description: Confirmation message
 
-    ListNotes:
+    ListAllNotes:
       type: function
       function:
-        name: list_notes
+        name: list_all_notes
         description: Return a list of all note paths in the vault.
         parameters:
           type: object
@@ -99,6 +120,105 @@ components:
           items:
             type: string
           description: List of note file paths
+
+    ListFolder:
+      type: function
+      function:
+        name: list_folder
+        description: Return a list of note paths within a specific folder (recursive).
+        parameters:
+          type: object
+          properties:
+            folder_path:
+              type: string
+              description: Folder path relative to vault root
+          required:
+            - folder_path
+        returns:
+          type: array
+          items:
+            type: string
+          description: List of note file paths in the folder
+
+    ListFolderDeep:
+      type: function
+      function:
+        name: list_folder_deep
+        description: Return a list of note paths within a specific folder (recursive, includes subdirectories).
+        parameters:
+          type: object
+          properties:
+            folder_path:
+              type: string
+              description: Folder path relative to vault root
+          required:
+            - folder_path
+        returns:
+          type: array
+          items:
+            type: string
+          description: List of note file paths in the folder and all subdirectories
+
+    SearchByTags:
+      type: function
+      function:
+        name: search_by_tags
+        description: >
+          Find notes that have ALL of the given YAML frontmatter tags.
+          Returns paths, titles, and matching tags for each note.
+        parameters:
+          type: object
+          properties:
+            tags:
+              type: array
+              items:
+                type: string
+              description: List of tags to search for (all must match)
+            n:
+              type: integer
+              description: Maximum number of results (default 10)
+              default: 10
+          required:
+            - tags
+        returns:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+                description: Path to the note file
+              title:
+                type: string
+                description: Title of the note
+              tags:
+                type: array
+                items:
+                  type: string
+                description: Matching YAML frontmatter tags
+
+    ReadNoteByTitle:
+      type: function
+      function:
+        name: read_note_by_title
+        description: >
+          Look up a note by its title (filename without extension) and return the full content.
+          If multiple notes share the same title, returns all of them separated by labeled headers.
+          Optionally specify a folder_path to scope the search and disambiguate duplicate titles.
+        parameters:
+          type: object
+          properties:
+            title:
+              type: string
+              description: Note title without .md extension (e.g., README)
+            folder_path:
+              type: string
+              description: Optional vault-relative folder path to narrow the search (e.g., Projects)
+          required:
+            - title
+        returns:
+          type: string
+          description: Full content of the matching note(s) in Markdown
 
     AddTags:
       type: function
@@ -143,6 +263,18 @@ components:
         returns:
           type: string
           description: Confirmation message
+
+    GetIndexStats:
+      type: function
+      function:
+        name: get_index_stats
+        description: Return index statistics (total chunks, unique notes, config info).
+        parameters:
+          type: object
+          properties: {}
+        returns:
+          type: string
+          description: Formatted stats string
 
     SyncIndex:
       type: function

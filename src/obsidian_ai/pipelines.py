@@ -1,9 +1,7 @@
 import json
 import re
-from . import llm_client
-from . import chroma_store
-from . import obsidian_client
-from . import indexer
+
+from . import chroma_store, indexer, llm_client, obsidian_client
 from .logger import get_logger
 
 log = get_logger(__name__)
@@ -25,7 +23,7 @@ def _retrieve_context(query: str, top_k: int = 3) -> dict | None:
         or None if no results found.
     """
     embedding = llm_client.embed(query)
-    results = chroma_store.query(embedding, n=top_k)
+    results = chroma_store.query(embedding, n=top_k * 3)
 
     seen = dict(chroma_store.dedup_paths(results))
 

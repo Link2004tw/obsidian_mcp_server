@@ -1,78 +1,207 @@
-"""CLI wrapper for obsidian-ai tools."""
+"""CLI wrapper for obsidian-ai MCP server.
+
+Spawns the MCP server as a subprocess and communicates via stdio,
+so all commands go through the same code path as any MCP agent would.
+"""
+
 import argparse
+import asyncio
 import sys
-import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
-
-def cmd_index(args):
-    from obsidian_ai.indexer import run_index
-    import time
-    start = time.time()
-    run_index()
-    print(f"Elapsed: {time.time() - start:.1f}s")
+# ── helpers ─────────────────────────────────────────────────────────
 
 
-def cmd_watch(args):
+def _clean_args(d: dict) -> dict:
+    """Remove keys where the value is None or an empty string (unset optional args)."""
+    return {k: v for k, v in d.items() if v is not None and v != ""}
+
+
+# ── MCP call ────────────────────────────────────────────────────────
+
+
+async def _call_tool(tool_name: str, args: dict) -> None:
+    """Connect to the MCP server via stdio, call *tool_name*, print the result."""
+    server_params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "obsidian_ai.mcp_server"],
+    )
+    try:
+        async with stdio_client(server_params) as (read, write), ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool(tool_name, args)
+
+                # result.content is a list of TextContent | ImageContent | ...
+                if result.content:
+                    for item in result.content:
+                        text = getattr(item, "text", None)
+                        if text is not None:
+                            print(text)
+                        else:
+                            print(str(item))
+                else:
+                    print("(empty result)")
+    except FileNotFoundError:
+        print(
+            "Error: Could not start the MCP server. Make sure you're in the"
+            " project directory and the package is installed.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error calling {tool_name}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+# ── subcommands ─────────────────────────────────────────────────────
+
+
+def cmd_watch():
+    """Start the file watcher directly (not via MCP — it's a long-running process)."""
     from obsidian_ai.indexer import watch
+    print("Starting file watcher (Ctrl+C to stop)...")
     watch()
 
 
-def cmd_search(args):
-    from obsidian_ai import llm_client, chroma_store
-    embedding = llm_client.embed(args.query)
-    results = chroma_store.query(embedding, n=args.n)
-    seen = {}
-    for r in results:
-        path = r["metadata"]["path"]
-        if path not in seen:
-            seen[path] = r["metadata"].get("title", "")
-    for path, title in seen.items():
-        print(f"  {path} — {title}")
-
-
-def cmd_tag(args):
-    from obsidian_ai.pipelines import tag_notes
-    result = tag_notes(args.query, top_k=args.n)
-    print(result)
-
-
-def cmd_stats(args):
-    from obsidian_ai import chroma_store
-    print(f"Notes in index: {chroma_store.count()}")
-
-
 def main():
-    parser = argparse.ArgumentParser(description="obsidian-ai CLI")
+    parser = argparse.ArgumentParser(
+        description="obsidian-ai CLI — talks to the MCP server via stdio"
+    )
     sub = parser.add_subparsers(dest="command")
 
-    sub.add_parser("index", help="Run full index")
-    sub.add_parser("watch", help="Start file watcher")
+    # search
+    p = sub.add_parser("search", help="Semantic search across indexed notes")
+    p.add_argument("query", help="Search query")
+    p.add_argument("-n", type=int, default=5, help="Number of results (default 5)")
+    p.add_argument("--tags", nargs="*", default=None, help="Filter by tags (all must match)")
+    p.add_argument("--exclude-tags", nargs="*", default=None, help="Exclude notes with these tags")
+    p.add_argument("--folder", default=None, help="Filter by folder path")
+    p.add_argument("--date-after", default=None, help="Filter by mtime after ISO date (2024-06-01)")
+    p.add_argument("--date-before", default=None, help="Filter by mtime before ISO date (2024-12-31)")
 
-    p_search = sub.add_parser("search", help="Semantic search")
-    p_search.add_argument("query", help="Search query")
-    p_search.add_argument("-n", type=int, default=5, help="Number of results")
+    # read
+    p = sub.add_parser("read", help="Read full note content by path")
+    p.add_argument("path", help="Vault-relative path to the note")
 
-    p_tag = sub.add_parser("tag", help="Auto-tag notes")
-    p_tag.add_argument("query", help="Query to find notes to tag")
-    p_tag.add_argument("-n", type=int, default=5, help="Number of notes")
+    # write
+    p = sub.add_parser("write", help="Create or overwrite a note")
+    p.add_argument("path", help="Vault-relative path to the note")
+    p.add_argument("content", help="Full Markdown content (use quotes)")
 
-    sub.add_parser("stats", help="Show index stats")
+    # list-all
+    sub.add_parser("list-all", help="List all note paths in the vault")
+
+    # list-folder
+    p = sub.add_parser(
+        "list-folder", help="List notes directly in a folder (non-recursive)"
+    )
+    p.add_argument("folder_path", help="Vault-relative folder path")
+
+    # list-folder-deep
+    p = sub.add_parser(
+        "list-folder-deep", help="List all notes in a folder (recursive)"
+    )
+    p.add_argument("folder_path", help="Vault-relative folder path")
+
+    # read-by-title
+    p = sub.add_parser(
+        "read-by-title", help="Look up a note by its filename (without .md)"
+    )
+    p.add_argument("title", help="Note title (e.g. README)")
+    p.add_argument(
+        "-f",
+        "--folder-path",
+        default="",
+        help="Folder to scope the search (e.g. Projects)",
+    )
+
+    # add-tags
+    p = sub.add_parser("add-tags", help="Add tags to a note's YAML frontmatter")
+    p.add_argument("path", help="Vault-relative path to the note")
+    p.add_argument("tags", nargs="+", help="One or more tags to add")
+
+    # create-backlink
+    p = sub.add_parser(
+        "create-backlink", help="Create mutual [[backlinks]] between two notes"
+    )
+    p.add_argument("path_a", help="Path to the first note")
+    p.add_argument("path_b", help="Path to the second note")
+
+    # search-by-tags
+    p = sub.add_parser(
+        "search-by-tags", help="Find notes by YAML frontmatter tags (all tags must match)"
+    )
+    p.add_argument("tags", nargs="+", help="One or more tags to search for")
+    p.add_argument("-n", type=int, default=10, help="Max results (default 10)")
+
+    # watch
+    sub.add_parser("watch", help="Start file watcher daemon (direct, not via MCP)")
+
+    # sync
+    sub.add_parser("sync", help="Re-run the full indexer pipeline")
+
+    # stats
+    sub.add_parser("stats", help="Show index statistics")
+
+    # ask
+    p = sub.add_parser("ask", help="Ask a natural-language question about the vault")
+    p.add_argument("question", help="Your question")
+    p.add_argument("-k", "--top-k", type=int, default=3, help="Notes to retrieve (default 3)")
+
+    # tag-notes
+    p = sub.add_parser("tag-notes", help="Auto-suggest & apply tags for a query")
+    p.add_argument("query", help="Search query to find relevant notes")
+    p.add_argument("-k", "--top-k", type=int, default=5, help="Number of notes to tag (default 5)")
 
     args = parser.parse_args()
-    if args.command == "index":
-        cmd_index(args)
-    elif args.command == "watch":
-        cmd_watch(args)
-    elif args.command == "search":
-        cmd_search(args)
-    elif args.command == "tag":
-        cmd_tag(args)
-    elif args.command == "stats":
-        cmd_stats(args)
-    else:
+    if not args.command:
         parser.print_help()
+        return
+
+    # ── commands that bypass MCP (long-running or not exposed) ──
+    if args.command == "watch":
+        cmd_watch()
+        return
+
+    # ── map CLI command → MCP tool ──────────────────────────────
+    tool_map = {
+        "search": (
+            "search_notes",
+            _clean_args({
+                "query": args.query,
+                "n": args.n,
+                "tags": args.tags,
+                "exclude_tags": args.exclude_tags,
+                "folder": args.folder,
+                "date_after": args.date_after,
+                "date_before": args.date_before,
+            }),
+        ),
+        "read": ("read_note", {"path": args.path}),
+        "write": ("write_note", {"path": args.path, "content": args.content}),
+        "list-all": ("list_all_notes", {}),
+        "list-folder": ("list_folder", {"folder_path": args.folder_path}),
+        "list-folder-deep": ("list_folder_deep", {"folder_path": args.folder_path}),
+        "read-by-title": (
+            "read_note_by_title",
+            _clean_args({"title": args.title, "folder_path": args.folder_path}),
+        ),
+        "search-by-tags": ("search_by_tags", {"tags": args.tags, "n": args.n}),
+        "add-tags": ("add_tags", {"path": args.path, "tags": args.tags}),
+        "create-backlink": (
+            "create_backlink",
+            {"path_a": args.path_a, "path_b": args.path_b},
+        ),
+        "stats": ("get_index_stats", {}),
+        "sync": ("sync_index", {}),
+        "ask": ("ask_vault", {"question": args.question, "top_k": args.top_k}),
+        "tag-notes": ("tag_notes", {"query": args.query, "top_k": args.top_k}),
+    }
+
+    tool_name, tool_args = tool_map[args.command]
+    asyncio.run(_call_tool(tool_name, tool_args))
 
 
 if __name__ == "__main__":

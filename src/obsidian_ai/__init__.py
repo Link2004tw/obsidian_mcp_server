@@ -1,12 +1,6 @@
 """Obsidian AI Knowledge System — semantic search, tagging, and backlinks for Obsidian vaults."""
 
-from . import config
-from . import obsidian_client
-from . import llm_client
-from . import chroma_store
-from . import indexer
-from . import pipelines
-from . import mcp_server
+from . import chroma_store, config, indexer, llm_client, mcp_server, obsidian_client, pipelines
 
 __all__ = [
     "config",

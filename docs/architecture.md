@@ -12,9 +12,13 @@ Agent (Goose / Claude / Cursor)
    ├── search_notes(query)
    ├── read_note(path)
    ├── write_note(path, content)
-   ├── list_notes()
+   ├── list_all_notes()
+   ├── list_folder(folder_path)     ← non-recursive
+   ├── list_folder_deep(folder_path) ← recursive
    ├── add_tags(path, tags)
    ├── create_backlink(a, b)
+   ├── read_note_by_title(title, folder_path)
+   ├── get_index_stats()
    ├── sync_index()
    ├── ask_vault(question)      ← LLM-powered
    └── tag_notes(query)         ← LLM-powered
@@ -45,7 +49,9 @@ Loads environment variables from `.env` via `python-dotenv`. Exports all setting
 
 ### obsidian_client.py
 Thin HTTP wrapper around the Obsidian Local REST API. Provides:
-- `list_notes()` — recursively walks the vault, returns all `.md` paths
+- `list_all_notes()` — recursively walks the vault, returns all `.md` paths
+- `list_folder(folder_path)` — lists `.md` files and subdirectories in a folder (non-recursive)
+- `list_folder_deep(folder_path)` — recursively walks a folder, returns all `.md` paths
 - `get_note(path)` — fetches note content as text
 - `put_note(path, content)` — creates or overwrites a note
 
@@ -91,7 +97,7 @@ LLM-powered pipelines for querying and auto-tagging. Provides:
 Both pipelines use `truncate_to_budget()` to stay within context limits.
 
 ### mcp_server.py
-FastMCP server exposing 9 vault tools via stdio transport. Wraps `obsidian_client`, `chroma_store`, `llm_client`, `indexer`, and `pipelines` for agent access. Logs all tool calls to `mcp_calls.log`.
+FastMCP server exposing 13 vault tools via stdio transport. Wraps `obsidian_client`, `chroma_store`, `llm_client`, `indexer`, and `pipelines` for agent access. Logs all tool calls to `mcp_calls.log`.
 
 ## Data Flow
 

@@ -1,5 +1,7 @@
 import time
+
 import requests
+
 from . import config
 
 REQUEST_TIMEOUT = 120
@@ -17,12 +19,12 @@ def _request_with_retry(method, url, *, timeout, **kwargs):
             resp = requests.request(method, url, timeout=timeout, **kwargs)
             resp.raise_for_status()
             return resp
-        except requests.exceptions.ReadTimeout as e:
+        except requests.exceptions.ReadTimeout:
             if attempt == MAX_RETRIES - 1:
                 raise
             wait = INITIAL_BACKOFF * (2 ** attempt)
             time.sleep(wait)
-        except requests.exceptions.ConnectionError as e:
+        except requests.exceptions.ConnectionError:
             if attempt == MAX_RETRIES - 1:
                 raise
             wait = INITIAL_BACKOFF * (2 ** attempt)
@@ -42,10 +44,13 @@ def embed(text: str) -> list[float]:
         json={"model": config.ollama_embed_model, "prompt": text},
         timeout=EMBED_TIMEOUT,
     )
-    return resp.json()["embedding"]
+    data = resp.json()
+    embedding = data["embedding"]
+    assert isinstance(embedding, list)
+    return embedding
 
 
-def chat(messages: list[dict], model: str = None, think: bool = True) -> str:
+def chat(messages: list[dict], model: str | None = None, think: bool = True) -> str:
     model = model or config.ollama_chat_model
     msgs = list(messages)
     if not think and msgs:
@@ -61,7 +66,10 @@ def chat(messages: list[dict], model: str = None, think: bool = True) -> str:
         json=payload,
         timeout=REQUEST_TIMEOUT,
     )
-    return resp.json()["message"]["content"]
+    data = resp.json()
+    content = data["message"]["content"]
+    assert isinstance(content, str)
+    return content
 
 
 def truncate_to_budget(text: str, max_words: int = MAX_CONTEXT_WORDS) -> str:

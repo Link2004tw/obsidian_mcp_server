@@ -68,6 +68,7 @@ CHROMA_PATH=data/chroma_db
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Embedding model name |
 | `OLLAMA_CHAT_MODEL` | `qwen3:8b` | Chat/LLM model name |
+| `VAULT_PATH` | *(required for watcher)* | Absolute path to the Obsidian vault (e.g., `C:/Users/me/vault`) |
 | `CHROMA_PATH` | `data/chroma_db` | ChromaDB storage path |
 
 ## 5. Run the indexer
@@ -132,9 +133,9 @@ The server runs on stdio — no HTTP port. Connect via an MCP client or agent.
 You can test tools directly via Python:
 
 ```python
-from obsidian_ai.mcp_server import search_notes, list_notes, ask_vault
+from obsidian_ai.mcp_server import search_notes, list_all_notes, ask_vault
 
-print(list_notes())
+print(list_all_notes())
 print(search_notes("python"))
 print(ask_vault("What are my notes about?"))
 ```

@@ -4,16 +4,6 @@ A local, privacy-first knowledge management layer for Obsidian vaults. Provides 
 
 ---
 
-## What's New (v0.2.0)
-
-- **Search Improvements** — Hybrid BM25 + semantic search, metadata filtering (tags, folder, date range), passage-level snippets, query expansion via LLM, diversity penalties, and LRU result caching
-- **Todo Management System** — Full CRUD MCP tools for a `todos.md` file, smart queries (overdue, blocked, by project), LLM-powered features (natural language creation, priority/due-date suggestion), and reporting (burndown, overdue summary)
-- **Advanced Features** — Incremental indexing via file hashes (no more full re-indexes), entity extraction at index time, note summaries, switchable embedding models, performance metrics (`get_index_stats`), batch operations, and semantic deduplication
-
-See the [full task list](dev/tasks.md) for details.
-
----
-
 ## Quick Start
 
 ### 1. Install dependencies
@@ -70,13 +60,25 @@ python -m obsidian_ai.mcp_server
 
 ### CLI
 
+All commands communicate with the MCP server via stdio — same code path as any MCP agent.
+
 | Command | Description |
 |---------|-------------|
-| `python cli.py index` | One-shot full index |
-| `python cli.py watch` | Start file watcher daemon |
-| `python cli.py search <query>` | Semantic search (`-n` for result count) |
-| `python cli.py tag <query>` | Auto-tag notes (`-n` for note count) |
-| `python cli.py stats` | Show total notes in index |
+| `python cli.py search <query>` | Semantic search (`-n` for count, `--tags`, `--folder`, `--date-after`, etc.) |
+| `python cli.py read <path>` | Read full note content by path |
+| `python cli.py write <path> <content>` | Create or overwrite a note (use quotes for content) |
+| `python cli.py list-all` | List all note paths in the vault |
+| `python cli.py list-folder <path>` | List notes directly in a folder (non-recursive) |
+| `python cli.py list-folder-deep <path>` | List all notes in a folder (recursive) |
+| `python cli.py read-by-title <title>` | Look up a note by its title (`-f <folder>` to scope) |
+| `python cli.py search-by-tags <tag> [tag...]` | Find notes by YAML frontmatter tags (`-n` for max results) |
+| `python cli.py add-tags <path> <tag> [tag...]` | Add tags to a note's YAML frontmatter |
+| `python cli.py create-backlink <a> <b>` | Create mutual `[[backlinks]]` between two notes |
+| `python cli.py watch` | Start file watcher daemon (auto-indexes on changes) |
+| `python cli.py sync` | Re-run the full indexer pipeline |
+| `python cli.py stats` | Show index statistics (chunks, notes, model) |
+| `python cli.py ask <question>` | Ask a natural-language question about the vault (`-k` for context) |
+| `python cli.py tag-notes <query>` | Auto-suggest & apply tags (`-k` for note count) |
 
 ### MCP Server
 
@@ -91,7 +93,9 @@ python -m obsidian_ai.mcp_server
 | `search_notes` | `query: str`, `n: int = 5` | Semantic search across indexed notes |
 | `read_note` | `path: str` | Fetch full note content |
 | `write_note` | `path: str`, `content: str` | Create or overwrite a note |
-| `list_notes` | — | List all note paths in the vault |
+| `list_all_notes` | — | List all note paths in the vault |
+| `list_folder` | `folder_path: str` | List note paths directly in a folder (non-recursive) |
+| `list_folder_deep` | `folder_path: str` | List all note paths in a folder (recursive, includes subdirs) |
 | `add_tags` | `path: str`, `tags: list[str]` | Add tags to YAML frontmatter |
 | `create_backlink` | `path_a: str`, `path_b: str` | Create mutual `[[backlinks]]` |
 | `sync_index` | — | Re-run the full indexer pipeline |
@@ -123,7 +127,7 @@ obsidian-ai/
 │       ├── chroma_store.py        # ChromaDB vector storage
 │       ├── indexer.py             # Vault indexing pipeline + file watcher
 │       ├── pipelines.py           # Query & action pipelines (LLM-powered)
-│       └── mcp_server.py          # MCP server (9 tools)
+│       └── mcp_server.py          # MCP server (12 tools)
 ├── cli.py                         # CLI wrapper (index, watch, search, tag, stats)
 ├── docs/                          # User documentation
 │   ├── setup.md
@@ -133,9 +137,7 @@ obsidian-ai/
 │   ├── indexer.md
 │   └── troubleshooting.md
 ├── dev/                           # Internal project docs
-│   ├── tasks.md
-│   ├── description.md
-│   └── word_limit_fix.md
+│   └── tasks.md
 ├── data/
 │   └── chroma_db/                 # Vector database (gitignored)
 ├── logs/                          # Log files (gitignored)
@@ -318,6 +320,7 @@ mcpServers:
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Embedding model name |
 | `OLLAMA_CHAT_MODEL` | `qwen3:8b` | Chat/LLM model name |
+| `VAULT_PATH` | — | Absolute path to the Obsidian vault (required for file watcher) |
 | `CHROMA_PATH` | `data/chroma_db` | ChromaDB persistent storage path |
 
 ---

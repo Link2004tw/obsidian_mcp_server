@@ -1,7 +1,11 @@
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env relative to this file's location, not the CWD
+_env_path = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(_env_path, override=True)
 
 obsidian_host = os.getenv("OBSIDIAN_HOST", "localhost")
 obsidian_port = int(os.getenv("OBSIDIAN_PORT", "27123"))
@@ -13,5 +17,6 @@ ollama_chat_model = os.getenv("OLLAMA_CHAT_MODEL", "qwen3:8b")
 
 _project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 chroma_path = os.getenv("CHROMA_PATH", os.path.join(_project_root, "data", "chroma_db"))
+vault_path = os.getenv("VAULT_PATH", "")
 
 EXCLUDE_PATTERNS = ["_gsdata_", ".gsbak", ".git", "__pycache__", "node_modules", ".excalidraw.md"]

@@ -19,14 +19,37 @@ EXCLUDE_PATTERNS: list[str] # Hardcoded exclusion patterns
 
 ## obsidian_client.py
 
-### `list_notes() -> list[str]`
+### `list_all_notes() -> list[str]`
 
 Returns a flat list of all `.md` file paths in the Obsidian vault. Recursively walks the vault tree via the REST API. Skips entries matching `EXCLUDE_PATTERNS`.
 
 ```python
 from obsidian_ai import obsidian_client
-notes = obsidian_client.list_notes()
+notes = obsidian_client.list_all_notes()
 # ["Courses/notes/Topic.md", "Journal/2024-01-01.md", ...]
+```
+
+### `list_folder(folder_path: str) -> list[str]`
+
+Returns entries directly inside a specific folder (non-recursive — does not descend into subdirectories).
+Includes both `.md` files and subdirectory names (with trailing `/`).
+
+```python
+from obsidian_ai import obsidian_client
+notes = obsidian_client.list_folder("Projects")
+# ["Projects/active.md", "Projects/archive/", "Projects/notes.md"]
+```
+
+Raises the same HTTP errors as `get_note()` if the folder doesn't exist.
+
+### `list_folder_deep(folder_path: str) -> list[str]`
+
+Returns a list of `.md` file paths within a specific folder (recursive — traverses all subdirectories).
+
+```python
+from obsidian_ai import obsidian_client
+notes = obsidian_client.list_folder_deep("Projects")
+# ["Projects/active.md", "Projects/archive/old.md", ...]
 ```
 
 ### `get_note(path: str) -> str`
@@ -310,7 +333,7 @@ result = pipelines.tag_notes("machine learning")
 
 ## mcp_server.py
 
-FastMCP server exposing 9 vault tools. Run with `python -m obsidian_ai.mcp_server`.
+FastMCP server exposing 14 vault tools. Run with `python -m obsidian_ai.mcp_server`.
 
 ### `search_notes(query: str, n: int = 5) -> list[dict]`
 
@@ -337,14 +360,46 @@ Creates or overwrites a note.
 mcp_client.call_tool("write_note", {"path": "New Note.md", "content": "# Hello"})
 ```
 
-### `list_notes() -> list[str]`
+### `list_all_notes() -> list[str]`
 
 Returns all `.md` paths in the vault.
 
 ```python
-notes = mcp_client.call_tool("list_notes", {})
+notes = mcp_client.call_tool("list_all_notes", {})
 # ["Notes/topic.md", "Journal/2024-01-01.md", ...]
 ```
+
+### `list_folder(folder_path: str) -> list[str]`
+
+Returns entries directly inside a specific folder (non-recursive).
+Includes both `.md` files and subdirectory names (with trailing `/`).
+
+```python
+notes = mcp_client.call_tool("list_folder", {"folder_path": "Projects"})
+# ["Projects/active.md", "Projects/archive/", "Projects/notes.md"]
+```
+
+### `search_by_tags(tags: list[str], n: int = 10) -> list[dict]`
+
+Find notes that have ALL of the given YAML frontmatter tags. Returns paths, titles, and matching tags.
+
+```python
+results = mcp_client.call_tool("search_by_tags", {"tags": ["python", "ml"], "n": 5})
+# [{"path": "Notes/topic.md", "title": "topic", "tags": ["python", "ml"]}]
+```
+
+**Note:** Tags are only stored during indexing. Run `sync_index` first if you haven't re-indexed since this tool was added.
+
+### `read_note_by_title(title: str, folder_path: str = "") -> str`
+
+Look up a note by its title (filename without extension) and return its full content. Optionally scope to a specific folder to disambiguate duplicate titles.
+
+```python
+content = mcp_client.call_tool("read_note_by_title", {"title": "README"})
+content = mcp_client.call_tool("read_note_by_title", {"title": "README", "folder_path": "Projects"})
+```
+
+**Duplicate title handling:** If multiple notes share the same title (e.g., two `README.md` files in different folders), all matching notes are returned with labeled `─── path ───` separators. Pass `folder_path` to narrow results to a specific folder.
 
 ### `add_tags(path: str, tags: list[str]) -> str`
 

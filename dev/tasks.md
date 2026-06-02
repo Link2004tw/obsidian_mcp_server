@@ -29,13 +29,15 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | 2.2 | Implement `search_notes(query)` tool | Embed the query, search ChromaDB, return top-k note paths + snippets | Medium | P1 | ✅ |
 | 2.3 | Implement `read_note(path)` tool | Fetch full note content from Obsidian REST API by path | Low | P1 | ✅ |
 | 2.4 | Implement `write_note(path, content)` tool | Create or overwrite a note via Obsidian REST API | Low | P1 | ✅ |
-| 2.5 | Implement `list_notes()` tool | Return a flat list of all note paths in the vault | Low | P1 | ✅ |
-| 2.6 | Implement `add_tags(path, tags)` tool | Parse YAML frontmatter, merge new tags, write note back; create frontmatter if absent | High | P1 | ✅ |
-| 2.7 | Implement `create_backlink(path_a, path_b)` tool | Append `[[note_b]]` to note A and `[[note_a]]` to note B if not already present | Medium | P1 | ✅ |
-| 2.8 | Implement `sync_index()` tool | Re-run the full indexer pipeline on demand; returns count of notes indexed | Medium | P2 | ✅ |
-| 2.9 | Test all tools via MCP inspector | Call each tool directly and verify correct input/output before any agent is involved | Low | P1 | ✅ |
-| 2.10 | Add error handling to all tools | Return structured error messages instead of raw exceptions for missing notes, API failures | Medium | P2 | ✅ |
-| 2.11 | Log all tool calls to a file | Append timestamped tool name + args to `mcp_calls.log` for debugging | Low | P3 | ✅ |
+| 2.5 | Implement `list_all_notes()` tool | Return a flat list of all note paths in the vault | Low | P1 | ✅ |
+| 2.6 | Implement `list_folder(folder_path)` tool | Return a list of note paths within a specific folder (non-recursive) | Low | P1 | ✅ |
+| 2.7 | Implement `add_tags(path, tags)` tool | Parse YAML frontmatter, merge new tags, write note back; create frontmatter if absent | High | P1 | ✅ |
+| 2.8 | Implement `create_backlink(path_a, path_b)` tool | Append `[[note_b]]` to note A and `[[note_a]]` to note B if not already present | Medium | P1 | ✅ |
+| 2.9 | Implement `sync_index()` tool | Re-run the full indexer pipeline on demand; returns count of notes indexed | Medium | P2 | ✅ |
+| 2.10 | Test all tools via MCP inspector | Call each tool directly and verify correct input/output before any agent is involved | Low | P1 | ✅ |
+| 2.11 | Add error handling to all tools | Return structured error messages instead of raw exceptions for missing notes, API failures | Medium | P2 | ✅ |
+| 2.12 | Log all tool calls to a file | Append timestamped tool name + args to `mcp_calls.log` for debugging | Low | P3 | ✅ |
+| 2.13 | Implement `list_folder_deep(folder_path)` tool | Return all note paths within a folder (recursive traversal) | Low | P2 | ✅ |
 
 ---
 
@@ -61,6 +63,9 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | # | Task | Description | Difficulty | Priority | Status |
 |---|---|---|---|---|---|
 | 4.1 | Add `watchdog` file watcher to `indexer.py` | Monitor vault directory; on file save, re-embed only the changed note and upsert to ChromaDB | Medium | P1 | ✅ |
+| 4.10 | Fix watcher to use configurable VAULT_PATH | Replace hardcoded project-root path with `config.vault_path` from .env; strip absolute path prefix for API-friendly relative paths | Medium | P1 | ✅ |
+| 4.11 | Remove debug print from obsidian_client.py | Delete leftover `print(_headers())` from `_list_dir` that was leaking the API token to stdout | Low | P1 | ✅ |
+| 4.12 | Lift inline import in mcp_server.py | Move `from .frontmatter import parse` from inside `add_tags()` to the top-level imports | Low | P3 | ✅ |
 | 4.2 | Handle note deletion | On file delete event, remove the corresponding ChromaDB entry by ID | Medium | P1 | ✅ |
 | 4.3 | Handle note rename | Delete old ChromaDB entry, re-index under new path | Medium | P1 | ✅ |
 | 4.4 | Add `--watch` flag to `indexer.py` | `python indexer.py --watch` starts the watcher; without flag does a one-shot full index | Low | P1 | ✅ |
@@ -77,11 +82,13 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | # | Task | Description | Difficulty | Priority | Status |
 |---|---|---|---|---|---|
 | 5.1 | Hybrid search (BM25 + semantic) | Implement BM25/TF-IDF keyword fallback when semantic results are low-confidence; blend scores with configurable `keyword_weight` and `min_similarity` | High | P2 | ⬜ |
-| 5.2 | Metadata filtering & faceting | Add optional filters to `search_notes`: `tags`, `folder`, `exclude_tags`, `date_after`, `date_before` for scoped searches | Medium | P2 | ⬜ |
-| 5.3 | Passage-level search returns | Return matching chunk snippet with context window instead of full note path; include `snippet`, `matched_chunk_idx`, `similarity_score` | Medium | P2 | ⬜ |
-| 5.4 | Query expansion (LLM) | Use Qwen to expand queries with synonyms before embedding (e.g., "PID tuning" → "proportional integral derivative control, feedback loop") | Medium | P3 | ⬜ |
-| 5.5 | Relevance threshold & diversity | Add `min_similarity` filter; implement `diversity_penalty` to penalize results too similar to already-selected ones | Low | P3 | ⬜ |
-| 5.6 | Search caching | LRU cache (`max_size=100`) for query embeddings + results; common queries become ~1ms after first run | Low | P3 | ⬜ |
+| 5.2 | Implement `search_by_tags(tags)` function | New function + MCP tool that queries ChromaDB using `where` filter on metadata `tags` field to find notes with matching tags. Requires storing tags in ChromaDB metadata during indexing. Return paths + snippets. | Medium | P1 | ⬜ |
+| 5.3 | Implement `read_note_by_title(title)` tool | New MCP tool that looks up a note by its title (basename without extension) in ChromaDB metadata, returns the full note content. Supports optional `folder_path` to disambiguate duplicates. | Low | P1 | ✅ |
+| 5.4 | Metadata filtering & faceting | Add optional filters to `search_notes`: `tags`, `folder`, `exclude_tags`, `date_after`, `date_before` for scoped searches | Medium | P2 | ⬜ |
+| 5.5 | Passage-level search returns | Return matching chunk snippet with context window instead of full note path; include `snippet`, `matched_chunk_idx`, `similarity_score` | Medium | P2 | ⬜ |
+| 5.6 | Query expansion (LLM) | Use Qwen to expand queries with synonyms before embedding (e.g., "PID tuning" → "proportional integral derivative control, feedback loop") | Medium | P3 | ⬜ |
+| 5.7 | Relevance threshold & diversity | Add `min_similarity` filter; implement `diversity_penalty` to penalize results too similar to already-selected ones | Low | P3 | ⬜ |
+| 5.8 | Search caching | LRU cache (`max_size=100`) for query embeddings + results; common queries become ~1ms after first run | Low | P3 | ⬜ |
 
 ## Phase 6 — Todo Management System
 
@@ -114,10 +121,10 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | Phase | Total Tasks | P1 | P2 | P3 | Done | Remaining |
 |---|---|---|---|---|---|---|
 | Phase 1 — Foundation | 10 | 8 | 1 | 1 | 10 | 0 |
-| Phase 2 — MCP Server | 11 | 7 | 3 | 1 | 11 | 0 |
+| Phase 2 — MCP Server | 13 | 8 | 4 | 1 | 13 | 0 |
 | Phase 3 — LLM + Agent | 10 | 6 | 3 | 1 | 10 | 0 |
-| Phase 4 — Polish | 9 | 4 | 3 | 2 | 9 | 0 |
-| Phase 5 — Search Improvements | 6 | 0 | 3 | 3 | 0 | 6 |
+| Phase 4 — Polish | 12 | 6 | 3 | 3 | 12 | 0 |
+| Phase 5 — Search Improvements | 8 | 2 | 3 | 3 | 1 | 7 |
 | Phase 6 — Todo Management | 7 | 1 | 3 | 3 | 0 | 7 |
 | Phase 7 — Advanced Features | 7 | 0 | 1 | 6 | 0 | 7 |
-| **Total** | **60** | **26** | **17** | **17** | **40** | **20** |
+| **Total** | **67** | **31** | **18** | **18** | **46** | **21** |

@@ -40,7 +40,7 @@ Uses 2-second debounce to avoid re-indexing rapid successive saves.
 ```
 Obsidian vault
     │
-    ├─ list_notes() ──────────── get all .md paths (exclude patterns filtered)
+    ├─ list_all_notes() ──────── get all .md paths (exclude patterns filtered)
     │
     ├─ get_note(path) ────────── fetch note content
     │

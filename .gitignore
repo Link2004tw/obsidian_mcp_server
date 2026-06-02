@@ -41,5 +41,8 @@ chroma_db/
 # Graphify output
 graphify-out/
 
+# Claude local settings
+.claude/settings.local.json
+
 # Obsidian plugin (if copied locally)
 .obsidian/

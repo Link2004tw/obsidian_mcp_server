@@ -1,4 +1,4 @@
-from obsidian_ai.frontmatter import parse, build, add_tags
+from obsidian_ai.frontmatter import add_tags, build, parse
 
 
 def test_parse_no_frontmatter():

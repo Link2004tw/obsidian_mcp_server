@@ -65,13 +65,69 @@ Create or overwrite a note.
 
 ---
 
-### `list_notes()`
+### `list_all_notes()`
 
 List all note paths in the vault.
 
 **Parameters:** None
 
 **Returns:** `list[str]` — all `.md` file paths (excludes backup folders, `.excalidraw.md`, etc.).
+
+---
+
+### `list_folder(folder_path)`
+
+List entries directly inside a specific folder (non-recursive — does not descend into subdirectories).
+Returns both `.md` files and subdirectory names (with trailing `/`).
+
+**Parameters:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `folder_path` | `str` | Vault-relative folder path (e.g., `Projects`) |
+
+**Returns:** `list[str]` — entries in the folder (`.md` files and subdirectories).
+
+---
+
+### `list_folder_deep(folder_path)`
+
+List all note paths within a specific folder (recursive — traverses all subdirectories).
+
+**Parameters:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `folder_path` | `str` | Vault-relative folder path (e.g., `Projects`) |
+
+**Returns:** `list[str]` — all `.md` file paths under the folder and its subdirectories.
+
+---
+
+### `read_note_by_title(title, folder_path=...)`
+
+Look up a note by its title (filename without extension) and return its full content. Optionally scope to a folder to disambiguate duplicate titles.
+
+**Parameters:**
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `title` | `str` | *(required)* | Note title without `.md` extension (e.g., `README`) |
+| `folder_path` | `str` | `""` | Vault-relative folder path to narrow the search (e.g., `Projects`) |
+
+**Returns:** `str` — note content as Markdown.
+
+**Example:**
+```
+read_note_by_title("README")
+# # Welcome...
+
+read_note_by_title("README", folder_path="Projects")
+# # Project Overview...
+```
+
+**Duplicate title handling:**
+- **Single match** — returns the note content directly
+- **Multiple matches, no folder** — returns all matching notes with `─── path ───` headers
+- **Multiple matches with folder** — narrows to notes inside the given folder; returns just that one, or all inside the folder if still multiple
+- **No match** — returns `Error: No note found with title: ...`
 
 ---
 
@@ -191,7 +247,7 @@ tag_notes("machine learning")
 
 ## Error Handling
 
-All tools catch exceptions and log them to `logs/mcp_calls.log` with the full traceback. List-returning tools (`search_notes`, `list_notes`) return an empty list `[]` on failure to maintain type consistency. String-returning tools return an error message string.
+All tools catch exceptions and log them to `logs/mcp_calls.log` with the full traceback. List-returning tools (`search_notes`, `list_all_notes`, `list_folder`) return an empty list `[]` on failure to maintain type consistency. String-returning tools return an error message string.
 
 ---
 

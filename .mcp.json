@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "obsidian-ai": {
+      "command": "python",
+      "args": ["-m", "obsidian_ai.mcp_server"],
+      "cwd": "E:\\coding\\python\\obsidian_mcp_server_test"
+    }
+  }
+}

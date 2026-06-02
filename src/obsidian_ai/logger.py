@@ -14,7 +14,7 @@ MAX_BYTES = 10 * 1024 * 1024  # 10MB
 BACKUP_COUNT = 5
 
 
-def get_logger(name: str, log_file: str = None, level: int = logging.INFO) -> logging.Logger:
+def get_logger(name: str, log_file: str | None = None, level: int = logging.INFO) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(level)
 
@@ -38,7 +38,7 @@ def get_logger(name: str, log_file: str = None, level: int = logging.INFO) -> lo
     return logger
 
 
-def log_error(logger: logging.Logger, msg: str, exc: Exception = None, **context):
+def log_error(logger: logging.Logger, msg: str, exc: Exception | None = None, **context):
     parts = [msg]
     if context:
         ctx_str = " — ".join(f"{k}={v}" for k, v in context.items())

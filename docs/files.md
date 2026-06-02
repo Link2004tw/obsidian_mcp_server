@@ -13,7 +13,7 @@ obsidian-ai/
 │       ├── chroma_store.py      # ChromaDB read/write wrapper (upsert/query)
 │       ├── indexer.py           # Indexing pipeline + file watcher
 │       ├── pipelines.py         # Query & action pipelines (LLM-powered)
-│       └── mcp_server.py        # FastMCP server with 9 vault tools
+│       └── mcp_server.py        # FastMCP server with 13 vault tools
 ├── cli.py                       # CLI wrapper (index, watch, search, tag, stats)
 ├── docs/                        # Documentation
 │   ├── setup.md
@@ -23,11 +23,13 @@ obsidian-ai/
 │   ├── indexer.md
 │   └── troubleshooting.md
 ├── dev/                         # Internal project docs
-│   ├── tasks.md
-│   ├── description.md
-│   └── word_limit_fix.md
+│   └── tasks.md
 ├── .env                         # API keys, ports, model names (gitignored)
-├── .env.example                 # Template for .env
+├── tests/                       # Unit tests
+│   ├── __init__.py
+│   ├── test_frontmatter.py
+│   ├── test_modules.py
+│   └── test_obsidian_client.py
 ├── .gitignore
 ├── pyproject.toml               # Project dependencies + config
 ├── README.md
