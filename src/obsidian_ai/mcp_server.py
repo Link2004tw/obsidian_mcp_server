@@ -4,7 +4,7 @@ from datetime import datetime
 
 from fastmcp import FastMCP
 
-from . import chroma_store, config, graph_store, indexer, keyword_search, llm_client, obsidian_client, pipelines
+from . import chroma_store, config, entity_store, graph_store, indexer, keyword_search, llm_client, obsidian_client, pipelines
 from .frontmatter import add_tags as fm_add_tags
 from .frontmatter import parse as fm_parse
 from .frontmatter import remove_tags as fm_remove_tags
@@ -289,12 +289,14 @@ def get_index_stats() -> str:
     try:
         stats = chroma_store.get_index_stats()
         cache = llm_client.embed_cache_info()
+        ent_stats = entity_store.stats()
         lines = [
             f"Unique notes indexed: {stats['unique_notes']}",
             f"Total chunks stored:  {stats['total_chunks']}",
             f"Embedding model:      {config.ollama_embed_model}",
             f"ChromaDB path:        {config.chroma_path}",
             f"Embedding cache:      {cache['currsize']}/{cache['maxsize']} (hits={cache['hits']}, misses={cache['misses']})",
+            f"Entities extracted:   {ent_stats['total_entities']} ({ent_stats['total_mentions']} mentions)",
         ]
         result = "\n".join(lines)
         log.info(f"get_index_stats — {result.replace(chr(10), ' | ')}")
@@ -645,6 +647,7 @@ def sync_index() -> str:
     log.info("sync_index — starting")
     try:
         indexer.run_index()
+        entity_store.rebuild()
         llm_client.clear_embed_cache()
         keyword_search.ensure_index()  # force BM25 rebuild
         log.info("sync_index — caches cleared")
@@ -720,6 +723,116 @@ def get_subject(subject: str, top_k: int = 10, keyword_weight: float = 0.3) -> l
     except Exception as e:
         log_error(log, "get_subject FAILED", exc=e, subject=subject)
         return []
+
+
+# ── Entity Tools ────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def search_entities(
+    entity_name: str,
+    entity_type: str | None = None,
+    n: int = 10,
+    use_graph: bool = False,
+) -> list[dict]:
+    """Find notes mentioning a specific entity.
+
+    Uses the entity index store for fast lookups, with ChromaDB fallback
+    via the ``entities_str`` metadata field.
+
+    Args:
+        entity_name: name of the entity to search for (e.g. ``"ESP32"``, ``"Alice"``).
+        entity_type: optional filter (e.g. ``"Person"``, ``"Hardware"``). One of:
+                     Person, Project, Hardware, Technology, Location, Concept, Event.
+        n: max results to return.
+        use_graph: if True, also traverse wiki-links from matching notes to
+                   find connected notes that may mention the entity indirectly.
+
+    Returns:
+        List of dicts with path, title, entity_name, entity_type, snippet, confidence.
+    """
+    log.info(f"search_entities — {entity_name}, type={entity_type}, n={n}, use_graph={use_graph}")
+    try:
+        results = entity_store.search(entity_name, type=entity_type, n=n * 2)
+
+        # If entity store has few results, try ChromaDB $contains fallback
+        if len(results) < n and chroma_store._collection is not None:
+            where = {"entities_str": {"$contains": f",{entity_name},"}} if entity_type is None else {}
+            if entity_type:
+                where = {"entities_str": {"$contains": f",{entity_type}:{entity_name},"}}
+            try:
+                raw = chroma_store._collection.get(where=where, include=["metadatas", "documents"])
+                seen_paths = {r["path"] for r in results}
+                for i in range(len(raw["ids"])):
+                    path = raw["metadatas"][i]["path"]
+                    if path not in seen_paths:
+                        seen_paths.add(path)
+                        results.append({
+                            "path": path,
+                            "entity_name": entity_name,
+                            "entity_type": entity_type or "Concept",
+                            "snippet": _truncate_snippet((raw["documents"] or [""])[i] or ""),
+                            "confidence": 0.5,
+                        })
+            except Exception:
+                pass
+
+        results = results[:n]
+
+        # Graph expansion
+        if use_graph and results:
+            result_paths = {r["path"] for r in results}
+            for r in list(results):
+                neighbors = graph_store.bfs(r["path"], max_depth=1)
+                for neighbor_path in neighbors:
+                    if neighbor_path not in result_paths:
+                        result_paths.add(neighbor_path)
+                        title = os.path.splitext(os.path.basename(neighbor_path))[0]
+                        results.append({
+                            "path": neighbor_path,
+                            "title": title,
+                            "entity_name": entity_name,
+                            "entity_type": entity_type or "Concept",
+                            "snippet": "(graph-connected)",
+                            "confidence": 0.3,
+                        })
+            results = results[:n]
+
+        log.info(f"search_entities — {len(results)} results")
+        return results
+    except Exception as e:
+        log_error(log, "search_entities FAILED", exc=e, entity_name=entity_name)
+        return []
+
+
+@mcp.tool()
+def get_note_entities(path: str) -> list[dict]:
+    """Return all entities found in a specific note during indexing.
+
+    Args:
+        path: vault-relative path to the note.
+
+    Returns:
+        List of dicts with entity_name, entity_type, confidence.
+    """
+    log.info(f"get_note_entities — {path}")
+    try:
+        results = entity_store.get_note_entities(path)
+        log.info(f"get_note_entities — {len(results)} entities")
+        return results
+    except Exception as e:
+        log_error(log, "get_note_entities FAILED", exc=e, path=path)
+        return []
+
+
+@mcp.tool()
+def get_entity_types() -> list[str]:
+    """Return all available entity types used for classification.
+
+    Returns:
+        List of entity type strings.
+    """
+    return entity_store.entity_types()
 
 
 # ── Graph RAG Tools ──────────────────────────────────────────────────

@@ -156,9 +156,10 @@ class GraphStore:
     # ── Stats ────────────────────────────────────────────────────────
 
     def stats(self) -> dict:
-        """Return graph statistics."""
-        nodes = len(self._adj)
-        edge_count = sum(len(t) for t in self._adj.values())
+        """Return graph statistics (excluding entity nodes)."""
+        note_adj = self._non_entity_nodes()
+        nodes = len(note_adj)
+        edge_count = sum(len(t) for t in note_adj.values())
         avg_degree = edge_count / nodes if nodes > 0 else 0
 
         # Incoming edge counts
@@ -209,20 +210,78 @@ class GraphStore:
     # ── Orphans ──────────────────────────────────────────────────────
 
     def get_orphans(self) -> list[str]:
-        """Return notes with no incoming or outgoing wiki-links."""
-        has_outgoing = {src for src, targets in self._adj.items() if targets}
+        """Return notes with no incoming or outgoing wiki-links (excluding entity nodes)."""
+        note_adj = self._non_entity_nodes()
+        has_outgoing = {src for src, targets in note_adj.items() if targets}
         has_incoming: set[str] = set()
         for targets in self._adj.values():
             has_incoming.update(targets)
+        # Remove entity nodes and their connected notes from incoming counts
+        for src, targets in self._adj.items():
+            if self.is_entity_node(src):
+                for t in targets:
+                    has_incoming.discard(t)
+        has_incoming = {p for p in has_incoming if not self.is_entity_node(p)}
         connected = has_outgoing | has_incoming
-        return sorted([p for p in self._adj if p not in connected])
+        return sorted([p for p in note_adj if p not in connected])
+
+    # ── Entity Nodes ─────────────────────────────────────────────────
+
+    @staticmethod
+    def _entity_node_id(entity_type: str, entity_name: str) -> str:
+        """Create a unique node ID for an entity: ``__entity:{type}:{name}``."""
+        return f"__entity:{entity_type}:{entity_name}"
+
+    def add_entity_edge(self, entity_type: str, entity_name: str, note_path: str) -> None:
+        """Add a directed edge from an entity node to a note."""
+        eid = self._entity_node_id(entity_type, entity_name)
+        self._adj.setdefault(eid, set()).add(note_path)
+        if note_path not in self._adj:
+            self._adj[note_path] = set()
+
+    def remove_entity_edges(self, entity_type: str, entity_name: str) -> None:
+        """Remove all edges for a specific entity node."""
+        eid = self._entity_node_id(entity_type, entity_name)
+        self._adj.pop(eid, None)
+
+    def get_entity_notes(self, entity_type: str, entity_name: str) -> list[str]:
+        """Return all note paths linked to an entity."""
+        eid = self._entity_node_id(entity_type, entity_name)
+        return sorted(self._adj.get(eid, set()))
+
+    def get_entity_nodes(self) -> list[dict]:
+        """Return all entity nodes in the graph."""
+        results: list[dict] = []
+        for node in self._adj:
+            if node.startswith("__entity:"):
+                parts = node.split(":", 2)
+                if len(parts) == 3:
+                    results.append({
+                        "entity_type": parts[1],
+                        "entity_name": parts[2],
+                        "linked_notes": len(self._adj[node]),
+                    })
+        return sorted(results, key=lambda r: r["entity_name"])
+
+    def is_entity_node(self, node: str) -> bool:
+        """Check if a node ID represents an entity."""
+        return node.startswith("__entity:")
+
+    def _non_entity_nodes(self) -> dict[str, set[str]]:
+        """Return a view of the adjacency dict excluding entity nodes."""
+        return {k: v for k, v in self._adj.items() if not self.is_entity_node(k)}
 
     # ── Export ───────────────────────────────────────────────────────
 
     def to_dict(self) -> dict:
-        """Return the graph as a plain dict (for MCP responses)."""
+        """Return the graph as a plain dict (for MCP responses, excluding entity nodes)."""
+        note_adj = self._non_entity_nodes()
+        edges = {}
+        for k, v in note_adj.items():
+            # Only include note-to-note edges
+            edges[k] = sorted(t for t in v if not self.is_entity_node(t))
         return {
-            "edges": {k: sorted(v) for k, v in self._adj.items()},
+            "edges": edges,
             "title_map": self._title_map,
         }
 
@@ -233,15 +292,17 @@ class GraphStore:
 
     def to_dot(self) -> str:
         """Export the graph as DOT format for visualization (Graphviz, etc.)."""
+        note_adj = self._non_entity_nodes()
         lines = ["digraph ObsidianVault {"]
         lines.append("  rankdir=LR;")
         lines.append('  node [shape=box, style=rounded];')
-        for node in sorted(self._adj):
+        for node in sorted(note_adj):
             label = os.path.splitext(os.path.basename(node))[0]
             label = label.replace('"', '\\"')
             lines.append(f'  "{node}" [label="{label}"];')
-        for src, targets in self._adj.items():
-            for tgt in sorted(targets):
+        for src, targets in note_adj.items():
+            note_targets = sorted(t for t in targets if not self.is_entity_node(t))
+            for tgt in note_targets:
                 lines.append(f'  "{src}" -> "{tgt}";')
         lines.append("}")
         return "\n".join(lines)
@@ -249,7 +310,7 @@ class GraphStore:
     # ── Community Detection ──────────────────────────────────────────
 
     def label_propagation(self, max_iter: int = 100) -> dict[str, int]:
-        """Detect communities using label propagation algorithm.
+        """Detect communities using label propagation algorithm (entity nodes excluded).
 
         Each node starts with its own unique label. Iteratively, each node
         adopts the most frequent label among its neighbors. Converges when
@@ -258,7 +319,8 @@ class GraphStore:
         Returns:
             {path: community_id} mapping — communities are 0-indexed integers.
         """
-        nodes = list(self._adj.keys())
+        note_adj = self._non_entity_nodes()
+        nodes = list(note_adj.keys())
         if not nodes:
             return {}
 
@@ -267,9 +329,9 @@ class GraphStore:
         for _ in range(max_iter):
             changed = False
             for node in nodes:
-                neighbors = self._adj[node]
+                neighbors = note_adj[node]
                 # Also consider backlinks (incoming edges)
-                backlinks = {src for src in self._adj if node in self._adj[src]}
+                backlinks = {src for src in note_adj if node in note_adj[src]}
                 all_neighbors = neighbors | backlinks
 
                 if not all_neighbors:

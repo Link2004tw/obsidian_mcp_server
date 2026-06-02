@@ -37,3 +37,18 @@ def test_import_chroma_store():
 def test_import_mcp_server():
     from obsidian_ai.mcp_server import mcp
     assert mcp.name == "obsidian-ai"
+
+
+def test_import_entity_store():
+    from obsidian_ai.entity_store import add, search, clear, save, stats, entity_types
+    assert callable(add)
+    assert callable(search)
+    assert callable(clear)
+    assert callable(save)
+    assert callable(stats)
+    assert callable(entity_types)
+
+
+def test_import_pipelines_extract():
+    from obsidian_ai.pipelines import extract_entities
+    assert callable(extract_entities)

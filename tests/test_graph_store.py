@@ -300,3 +300,88 @@ def test_to_dict_and_from_dict():
     g2.from_dict(data)
     assert g2._adj == g._adj
     assert g2._title_map == g._title_map
+
+
+# ── Entity Nodes ─────────────────────────────────────────────────────
+
+
+def test_entity_node_id():
+    eid = GraphStore._entity_node_id("Person", "Alice")
+    assert eid == "__entity:Person:Alice"
+
+
+def test_add_entity_edge():
+    g = _make_graph("/dev/null")
+    g.add_entity_edge("Person", "Alice", "note1.md")
+    g.add_entity_edge("Person", "Alice", "note2.md")
+
+    assert g.is_entity_node("__entity:Person:Alice")
+    assert not g.is_entity_node("note1.md")
+
+    notes = g.get_entity_notes("Person", "Alice")
+    assert notes == ["note1.md", "note2.md"]
+
+
+def test_remove_entity_edges():
+    g = _make_graph("/dev/null")
+    g.add_entity_edge("Person", "Alice", "note1.md")
+    assert g.is_entity_node("__entity:Person:Alice")
+    assert g.get_entity_notes("Person", "Alice") == ["note1.md"]
+
+    g.remove_entity_edges("Person", "Alice")
+    # Node is removed from _adj entirely
+    assert "__entity:Person:Alice" not in g._adj
+    assert g.get_entity_notes("Person", "Alice") == []
+
+
+def test_get_entity_nodes():
+    g = _make_graph("/dev/null")
+    g.add_entity_edge("Person", "Alice", "note1.md")
+    g.add_entity_edge("Hardware", "ESP32", "note2.md")
+
+    nodes = g.get_entity_nodes()
+    assert len(nodes) == 2
+    names = {n["entity_name"] for n in nodes}
+    types = {n["entity_type"] for n in nodes}
+    assert names == {"Alice", "ESP32"}
+    assert types == {"Person", "Hardware"}
+
+
+def test_entity_nodes_excluded_from_stats():
+    g = _make_graph("/dev/null")
+    g.add_edge("A.md", "B.md")
+    g.add_entity_edge("Person", "Alice", "A.md")
+
+    s = g.stats()
+    assert s["nodes"] == 2  # A.md, B.md — entity node excluded
+    assert s["edges"] == 1
+
+
+def test_entity_nodes_excluded_from_orphans():
+    g = _make_graph("/dev/null")
+    g._adj = {"A.md": set(), "__entity:Person:Alice": {"A.md"}}
+
+    orphans = g.get_orphans()
+    assert "A.md" in orphans
+    assert "__entity:Person:Alice" not in orphans
+
+
+def test_entity_nodes_excluded_from_to_dict():
+    g = _make_graph("/dev/null")
+    g._adj = {"A.md": {"__entity:Person:Alice"}, "__entity:Person:Alice": {"A.md"}}
+    g._title_map = {"a": "A.md"}
+
+    data = g.to_dict()
+    assert "A.md" in data["edges"]
+    assert "__entity:Person:Alice" not in data["edges"]
+    # A.md's edge to entity should also be filtered
+    assert data["edges"]["A.md"] == []
+
+
+def test_non_entity_nodes():
+    g = _make_graph("/dev/null")
+    g._adj = {"A.md": {"B.md"}, "__entity:Person:Alice": {"A.md"}}
+
+    filtered = g._non_entity_nodes()
+    assert "A.md" in filtered
+    assert "__entity:Person:Alice" not in filtered

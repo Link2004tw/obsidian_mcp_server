@@ -5,7 +5,7 @@ import sys
 import threading
 import time
 
-from . import chroma_store, config, graph_store, llm_client, obsidian_client
+from . import chroma_store, config, entity_store, graph_store, llm_client, obsidian_client, pipelines
 
 from .frontmatter import add_tags as fm_add_tags, parse as fm_parse
 from .logger import get_logger, log_error
@@ -229,6 +229,22 @@ def _index_note(path: str, content: str | None = None, *, embed_workers: int = 1
         chroma_store.delete_by_path(path)
         heading_chunks = chunk_text_heading_aware(sanitized)
 
+        # Entity extraction (per-note, cached within each index run)
+        entities = pipelines.extract_entities(sanitized, path=path)
+        entities_str = ""
+        if entities:
+            serialised = ",".join(f"{e['type']}:{e['name']}" for e in entities)
+            entities_str = f",{serialised},"
+            for ent in entities:
+                entity_store.add(
+                    name=ent["name"],
+                    type=ent["type"],
+                    confidence=ent["confidence"],
+                    path=path,
+                    chunk_idx=0,
+                    context=sanitized[:200],
+                )
+
         # Optional: reuse embeddings for identical chunk text within this run.
         # (Keeps memory bounded; only scoped to a single note.)
         local_embedding_cache: dict[str, list[float]] = {}
@@ -264,6 +280,8 @@ def _index_note(path: str, content: str | None = None, *, embed_workers: int = 1
                     metadata["links_str"] = _links_to_meta(links)
                 if mtime is not None:
                     metadata["mtime"] = mtime
+                if entities_str:
+                    metadata["entities_str"] = entities_str
                 metadata.update(fm_fields)
                 chroma_store.upsert(path=path, chunk_idx=i, embedding=embedding, metadata=metadata, document=chunk)
         else:
@@ -287,6 +305,8 @@ def _index_note(path: str, content: str | None = None, *, embed_workers: int = 1
                         metadata["links_str"] = _links_to_meta(links)
                     if mtime is not None:
                         metadata["mtime"] = mtime
+                    if entities_str:
+                        metadata["entities_str"] = entities_str
                     metadata.update(fm_fields)
                     chroma_store.upsert(path=path, chunk_idx=i, embedding=embedding, metadata=metadata, document=chunk)
 
@@ -346,6 +366,9 @@ def run_index():
 
     log.info(f"Starting index — {len(notes)} notes found")
 
+    # Reset entity store
+    entity_store.clear()
+
     # Rebuild graph from scratch
     log.info("Rebuilding graph...")
     all_contents: dict[str, str] = {}
@@ -392,6 +415,8 @@ def run_index():
         except Exception as e:
             failed += 1
             log_error(log, f"FAILED: {path}", exc=e)
+    entity_store.save()
+    log.info(f"Entity store saved — {entity_store.stats()['total_entities']} entities")
     log.info(f"Done — Indexed: {indexed}, Skipped: {skipped}, Unchanged (mtime): {mtime_skipped}, Failed: {failed}")
 
 

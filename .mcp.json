@@ -3,7 +3,10 @@
     "obsidian-ai": {
       "command": "python",
       "args": ["-m", "obsidian_ai.mcp_server"],
-      "cwd": "E:\\coding\\python\\obsidian_mcp_server_test"
+      "cwd": "E:\\coding\\python\\obsidian_mcp_server_test",
+      "env": {
+        "CHROMA_SKIP_RUST": "1"
+      }
     }
   }
 }

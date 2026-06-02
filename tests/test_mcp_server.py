@@ -287,3 +287,63 @@ def test_expand_query_empty(mock_llm):
     mock_llm.chat.return_value = ""
     result = mcp_server._expand_query("query")
     assert result == []
+
+
+# ── Entity Tools ────────────────────────────────────────────────────
+
+
+@patch("obsidian_ai.mcp_server.chroma_store")
+@patch("obsidian_ai.mcp_server.entity_store")
+def test_search_entities_by_name(mock_entity_store, mock_chroma):
+    mock_chroma._collection = None
+    mock_entity_store.search.return_value = [
+        {"path": "note1.md", "entity_name": "ESP32", "entity_type": "Hardware",
+         "snippet": "using ESP32", "confidence": 0.95},
+        {"path": "note2.md", "entity_name": "ESP32", "entity_type": "Hardware",
+         "snippet": "ESP32 module", "confidence": 0.9},
+    ]
+    result = mcp_server.search_entities("ESP32")
+    assert len(result) == 2
+    assert result[0]["entity_name"] == "ESP32"
+    assert result[0]["entity_type"] == "Hardware"
+
+
+@patch("obsidian_ai.mcp_server.chroma_store")
+@patch("obsidian_ai.mcp_server.entity_store")
+def test_search_entities_empty(mock_entity_store, mock_chroma):
+    mock_chroma._collection = None
+    mock_entity_store.search.return_value = []
+    result = mcp_server.search_entities("Nonexistent")
+    assert result == []
+
+
+@patch("obsidian_ai.mcp_server.chroma_store")
+@patch("obsidian_ai.mcp_server.entity_store")
+def test_search_entities_with_type_filter(mock_entity_store, mock_chroma):
+    mock_chroma._collection = None
+    mock_entity_store.search.return_value = [
+        {"path": "note1.md", "entity_name": "Alice", "entity_type": "Person",
+         "snippet": "Alice worked on", "confidence": 0.95},
+    ]
+    result = mcp_server.search_entities("Alice", entity_type="Person")
+    assert len(result) == 1
+
+
+@patch("obsidian_ai.mcp_server.chroma_store")
+@patch("obsidian_ai.mcp_server.entity_store")
+def test_get_note_entities(mock_entity_store, mock_chroma):
+    mock_chroma._collection = None
+    mock_entity_store.get_note_entities.return_value = [
+        {"entity_name": "Alice", "entity_type": "Person", "confidence": 0.95},
+        {"entity_name": "ProjectX", "entity_type": "Project", "confidence": 0.9},
+    ]
+    result = mcp_server.get_note_entities("note1.md")
+    assert len(result) == 2
+    assert result[0]["entity_name"] == "Alice"
+
+
+def test_get_entity_types():
+    result = mcp_server.get_entity_types()
+    assert isinstance(result, list)
+    assert "Person" in result
+    assert "Hardware" in result

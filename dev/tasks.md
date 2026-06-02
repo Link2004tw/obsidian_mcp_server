@@ -117,16 +117,16 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | #   | Task                                 | Description                                                                                                                                       | Difficulty | Priority | Status |
 | --- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------- | ------ |
 | 7.1 | Incremental indexing via file hashes | Track file content hashes in JSON; only re-embed changed notes (delta updates) instead of re-indexing entire vault                                | Medium     | P2       | ⬜     |
-| 7.2 | Entity extraction                    | Extract named entities (people, projects, hardware, dates, concepts) using LLM during indexing; store in ChromaDB metadata for `search_by_entity` | High       | P3       | ⬜     |
-| 7.2a | Entity extraction prompt pipeline    | Design and test the LLM prompt that extracts entities from note content; return structured JSON with entity type, name, and confidence               | Medium     | P2       | ⬜     |
-| 7.2b | Entity deduplication and normalization | Merge entity variants (e.g., "ESP32" vs "esp32", "Maria" vs "maria"); maintain canonical entity names and alias mapping                             | Medium     | P2       | ⬜     |
+| 7.2 | Entity extraction                    | Extract named entities (people, projects, hardware, dates, concepts) using LLM during indexing; store in ChromaDB metadata for `search_by_entity` | High       | P3       | ✅     |
+| 7.2a | Entity extraction prompt pipeline    | Design and test the LLM prompt that extracts entities from note content; return structured JSON with entity type, name, and confidence               | Medium     | P2       | ✅     |
+| 7.2b | Entity deduplication and normalization | Merge entity variants (e.g., "ESP32" vs "esp32", "Maria" vs "maria"); maintain canonical entity names and alias mapping                             | Medium     | P2       | ✅     |
 | 7.3 | Note summaries                       | Pre-generate 1-2 sentence summaries during indexing; `ask_vault` uses summary first, loads full content only if needed                            | High       | P3       | ⬜     |
 | 7.4 | Embedding model switching            | Make embedding model configurable at runtime; implement `switch_embedding_model(new_model)` that re-indexes with new model                        | Medium     | P3       | ⬜     |
 | 7.5 | Performance metrics                  | `get_index_stats()` exposing total_notes, total_chunks, index_size_mb, avg_query_latency_ms, cache_hit_rate, last_sync, embedding_model           | Medium     | P3       | ✅     |
 | 7.6 | Batch operations                     | `batch_search(queries)` returning `dict[query, results]`; `batch_tag_notes(note_paths, tags)` for bulk tagging                                    | Low        | P3       | ⬜     |
 | 7.7 | Semantic deduplication               | `find_duplicate_notes(threshold)` using embedding similarity to detect near-duplicate note pairs                                                  | Low        | P3       | ⬜     |
-| 7.8 | Entity index store                   | Build and maintain an inverted index mapping entities → list of notes that mention them; persist as JSON in `data/` and rebuild on index sync     | Medium     | P2       | ⬜     |
-| 7.9 | Implement `search_by_entity` tool    | New MCP tool that takes an entity name and returns all notes mentioning it, with snippet showing the context of mention                           | Medium     | P2       | ⬜     |
+| 7.8 | Entity index store                   | Build and maintain an inverted index mapping entities → list of notes that mention them; persist as JSON in `data/` and rebuild on index sync     | Medium     | P2       | ✅     |
+| 7.9 | Implement `search_by_entity` tool    | New MCP tool that takes an entity name and returns all notes mentioning it, with snippet showing the context of mention                           | Medium     | P2       | ✅     |
 | 7.10 | Implement `summarize_topic` tool    | New MCP tool that takes a topic, finds all related notes via semantic+entity+graph search, and returns an LLM-generated consolidated summary     | High       | P2       | ⬜     |
 | 7.11 | Multi-strategy retrieval pipeline    | Combine semantic search, entity lookup, and graph traversal into a single retrieval pipeline that merges and deduplicates results before LLM      | High       | P1       | ⬜     |
 | 7.12 | Group search results by note         | Add `group_by_note` option to `search_notes` that collapses chunk-level results into note-level summaries with top matching snippet per note       | Low        | P2       | ⬜     |
@@ -220,7 +220,7 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | 14.10 | Graph visualization export           | Export graph as DOT/JSON format for external visualization (Obsidian, Neo4j, etc.)                                                                            | Medium     | P3       | ✅     |
 | 14.11 | Orphan note detection                | Identify notes with no incoming or outgoing wiki-links; useful for vault cleanup                                                                              | Low        | P3       | ✅     |
 | 14.12 | Community detection                  | Implement label propagation clustering on the wiki-link graph; group notes into communities for higher-level navigation                            | High       | P3       | ✅     |
-| 14.13 | Entity-graph cross-reference         | Link extracted entities to the wiki-link graph so that searching for an entity also traverses to notes connected via both entity mention and wiki-links     | High       | P2       | ⬜     |
+| 14.13 | Entity-graph cross-reference         | Link extracted entities to the wiki-link graph so that searching for an entity also traverses to notes connected via both entity mention and wiki-links     | High       | P2       | ✅     |
 | 14.14 | Multi-hop graph traversal            | Implement BFS/DFS graph traversal from seed notes up to N hops, returning all reachable notes with path traces (e.g., A → B → C) for explainability         | Medium     | P2       | ✅     |
 | 14.15 | Implement `related_notes(path, k)` tool | New MCP tool combining semantic similarity and graph proximity: returns top-k notes ranked by both embedding similarity and graph distance from source     | Medium     | P1       | ✅     |
 | 14.16 | Graph-aware `ask_vault`              | Enhance the RAG pipeline to use graph traversal for contextual expansion: after initial retrieval, follow links to find related context before generating answer | High | P1       | ✅     |
@@ -237,12 +237,12 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | Phase 4 — Polish                              | 12          | 6      | 3      | 3      | 12     | 0         |
 | Phase 5 — Search Improvements                 | 10          | 3      | 4      | 3      | 10     | 0         |
 | Phase 6 — Todo Management                     | 7           | 1      | 3      | 3      | 3      | 4         |
-| Phase 7 — Advanced Features                   | 15          | 1      | 7      | 7      | 1      | 14        |
+| Phase 7 — Advanced Features                   | 15          | 1      | 7      | 7      | 5      | 10        |
 | Phase 8 — Performance optimization follow-ups | 4           | 0      | 3      | 1      | 4      | 0         |
 | Phase 9 — Bug Fixes                           | 4           | 2      | 2      | 0      | 4      | 0         |
 | Phase 10 — Security Hardening                 | 4           | 1      | 3      | 0      | 4      | 0         |
 | Phase 11 — Tech Debt / Refactoring            | 5           | 0      | 2      | 3      | 5      | 0         |
 | Phase 12 — Test Coverage                      | 7           | 0      | 5      | 2      | 7      | 0         |
 | Phase 13 — New Functionality                  | 2           | 0      | 1      | 1      | 2      | 0         |
-| Phase 14 — Graph RAG                          | 18          | 10     | 4      | 4      | 16     | 2         |
-| **Total**                                     | **127**     | **58** | **49** | **40** | **103** | **24**    |
+| Phase 14 — Graph RAG                          | 18          | 10     | 4      | 4      | 17     | 1         |
+| **Total**                                     | **127**     | **58** | **49** | **40** | **109** | **18**    |
