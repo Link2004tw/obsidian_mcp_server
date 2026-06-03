@@ -24,6 +24,14 @@ def reset_collection() -> None:
     log.info("ChromaDB collection reset")
 
 
+_HNSW_METADATA = {
+    "hnsw:space": "cosine",
+    "hnsw:construction_ef": 100,
+    "hnsw:M": 8,
+    "hnsw:search_ef": 100,
+}
+
+
 def init(path: str | None = None) -> None:
     """Initialize or reinitialize the ChromaDB client.
 
@@ -33,7 +41,7 @@ def init(path: str | None = None) -> None:
     """
     global _client, _collection
     _client = chromadb.PersistentClient(path=path or config.chroma_path)
-    _collection = _client.get_or_create_collection("notes")
+    _collection = _client.get_or_create_collection("notes", metadata=_HNSW_METADATA)
 
 
 def upsert(path: str, chunk_idx: int, embedding: list[float], metadata: dict, document: str | None = None) -> None:
@@ -127,7 +135,7 @@ def find_duplicate_notes(threshold: float = 0.9, n: int = 20) -> list[dict]:
 
     # First chunk embedding per note
     note_emb: dict[str, list[float]] = {}
-    for meta, emb in zip(metadatas, embeddings):
+    for meta, emb in zip(metadatas, embeddings, strict=False):
         path = meta["path"]
         if path not in note_emb:
             note_emb[path] = emb
@@ -179,37 +187,39 @@ def search_by_tags(tags: list[str], n: int = 20) -> list[dict]:
     """Search for notes that have ALL of the given tags.
 
     Tags are stored as a comma-delimited string like ",tag1,tag2," in the
-    ``tags_str`` metadata field. Uses ChromaDB's ``$contains`` to match.
+    ``tags_str`` metadata field. Performs client-side filtering as a
+    workaround for ChromaDB 1.5.9 ``$contains`` bug.
 
     Returns deduplicated results (one per note path) with metadata + snippet.
     """
     if not tags:
         return []
     _ensure_init()
-    conditions = [{"tags_str": {"$contains": f",{tag},"}} for tag in tags]
-    where: dict = {"$and": conditions} if len(conditions) > 1 else conditions[0]
+    raw = _collection.get(include=["metadatas", "documents"])  # type: ignore[arg-type]
+    all_metadatas: list[dict] = raw["metadatas"] if raw["metadatas"] else []  # type: ignore[assignment]
+    all_documents: list[str] = raw["documents"] if raw["documents"] else []  # type: ignore[assignment]
 
-    raw = _collection.get(where=where, include=["metadatas", "documents"])  # type: ignore[arg-type]
-    metadatas: list[dict] = raw["metadatas"] if raw["metadatas"] else []  # type: ignore[assignment]
-    documents: list[str] = raw["documents"] if raw["documents"] else []  # type: ignore[assignment]
-
-    # Deduplicate by path, picking first chunk as snippet
+    # Client-side tag filtering (workaround for ChromaDB $contains bug)
     seen = set()
     unique = []
-    for i, m in enumerate(metadatas):
-        p = m["path"]
-        if p not in seen:
-            seen.add(p)
-            result = dict(m)
-            if i < len(documents) and documents[i]:
-                doc = documents[i]
-                snippet = doc[:300] + ("..." if len(doc) > 300 else "")
-                result["snippet"] = snippet
-            else:
-                result["snippet"] = ""
-            unique.append(result)
-            if len(unique) >= n:
-                break
+    for i, m in enumerate(all_metadatas):
+        tags_str = m.get("tags_str", "")
+        if not tags_str:
+            continue
+        if all(f",{tag}," in tags_str for tag in tags):
+            p = m["path"]
+            if p not in seen:
+                seen.add(p)
+                result = dict(m)
+                if i < len(all_documents) and all_documents[i]:
+                    doc = all_documents[i]
+                    snippet = doc[:300] + ("..." if len(doc) > 300 else "")
+                    result["snippet"] = snippet
+                else:
+                    result["snippet"] = ""
+                unique.append(result)
+                if len(unique) >= n:
+                    break
     return unique
 
 

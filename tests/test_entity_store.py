@@ -1,6 +1,5 @@
 """Tests for entity_store.py."""
 
-import tempfile
 import os
 
 from obsidian_ai import entity_store
@@ -8,11 +7,12 @@ from obsidian_ai import entity_store
 
 def _make_store():
     """Create a temporary EntityStore for testing."""
-    f = tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w")
-    f.close()
-    store = entity_store.EntityStore(path=f.name)
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
+        fname = f.name
+    store = entity_store.EntityStore(path=fname)
     store.clear()
-    return store, f.name
+    return store, fname
 
 
 def test_add_and_search():

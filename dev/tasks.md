@@ -241,6 +241,24 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | 15.8 | Move tuning constants to `config.py`           | Relocate CHUNK_SIZE, SKIP_MIN_TOKENS, _EMBED_WORKER_FLOOR/CEIL from indexer.py to config.py for visibility and adjustability          | Low | P3 | ✅ |
 | **Phase 15 Total**                            | **8**        | **1**     | **3**     | **4**     | **8**     | **0**         |
 
+---
+
+## Phase 16 — Performance Optimizations
+
+| #    | Task                                                    | Description                                                                                                                                                         | Difficulty | Priority | Status |
+| ---- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------- | ------ |
+| 16.1 | Batch entity extraction per note                        | Combine entity extraction + summary generation into a single LLM call per note instead of two serialized calls; batch all chunks' content in one prompt (~2× speedup) | Medium     | P2       | ✅     |
+| 16.2 | Persistent embedding cache across restarts              | Save/load the embedding LRU cache (`embed.cache_info()`) to disk so embeddings for unchanged content survive server restarts                                        | Medium     | P2       | ✅     |
+| 16.3 | Tune ChromaDB HNSW parameters                           | Reduce `ef_construction` (200→100) and `M` (16→8) via collection metadata — cuts memory ~2× for single-user vaults with negligible recall loss                     | Low        | P3       | ✅     |
+| 16.4 | Lazy graph write-back cache                             | Batch graph.json saves (flush every N writes or after M seconds) instead of writing on every `add_edge`/`remove_node` — reduces disk I/O for large vaults          | Medium     | P2       | ✅     |
+| 16.5 | GC stale content_hashes                                 | After indexing, remove hash map entries whose paths no longer exist in the vault — prevents unbounded growth from deleted/renamed notes                             | Low        | P2       | ✅     |
+| 16.6 | Config validation on startup                            | LLM validates Ollama connectivity, model existence, vault dir writability, API key presence at startup; print readable errors before the server starts               | Medium     | P1       | ✅     |
+| 16.7 | Graceful Ollama degradation                             | Add health-check endpoint; if Ollama is down, LLM features return degraded-mode messages instead of crashing the whole server                                       | Medium     | P2       | ✅     |
+| 16.8 | Fix pre-existing lint issues                            | Run `ruff --fix --unsafe-fixes` on `mcp_server.py`; fix nested `if`, f-strings, unused variables, ambiguous `l` (todos.py already fixed)                            | Low        | P3       | ✅     |
+| 16.9 | Add todo unit tests                                     | Write `tests/test_todos.py` with basic CRUD tests for all 15+ todo functions (mocked file I/O) to prevent regressions                                              | Medium     | P2       | ✅     |
+| 16.10 | Add type annotations to key modules                    | Add function signatures and return types to `graph_store.py`, `entity_store.py`, `keyword_search.py` — start with modules that have zero type coverage              | Low        | P3       | ✅     |
+| **Phase 16 Total**                                        | **10**      | **1**     | **6**     | **3**     | **10**    | **0**         |
+
 ## Summary
 
 | Phase                                         | Total Tasks | P1     | P2     | P3     | Done   | Remaining |
@@ -260,4 +278,5 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | Phase 13 — New Functionality                  | 2           | 0      | 1      | 1      | 2      | 0         |
 | Phase 14 — Graph RAG                          | 18          | 10     | 4      | 4      | 18     | 0         |
 | Phase 15 — Indexer Performance                | 8           | 1      | 3      | 4      | 8      | 0         |
-| **Total**                                     | **136**     | **59** | **52** | **45** | **136** | **0**     |
+| Phase 16 — Performance Optimizations          | 10          | 1      | 6      | 3      | 10     | 0         |
+| **Total**                                     | **143**     | **48** | **58** | **37** | **143** | **0**     |

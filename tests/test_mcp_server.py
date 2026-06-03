@@ -1,8 +1,7 @@
 """Tests for mcp_server.py — MCP tools with mocked dependencies."""
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import patch
 
 from obsidian_ai import mcp_server
-
 
 # ── _truncate_snippet ──────────────────────────────────────────────
 
@@ -347,3 +346,25 @@ def test_get_entity_types():
     assert isinstance(result, list)
     assert "Person" in result
     assert "Hardware" in result
+
+
+# ── health_check ───────────────────────────────────────────────────
+
+
+@patch("obsidian_ai.mcp_server.llm_client")
+@patch("obsidian_ai.mcp_server.obsidian_client")
+@patch("obsidian_ai.mcp_server.chroma_store")
+@patch("obsidian_ai.mcp_server.config")
+def test_health_check(mock_config, mock_chroma, mock_obsidian, mock_llm):
+    mock_config.ollama_embed_model = "nomic-embed-text"
+    mock_config.ollama_chat_model = "qwen3:8b"
+    mock_llm.check_health.return_value = {
+        "ollama": {"status": "ok", "embed_model": "nomic-embed-text", "chat_model": "qwen3:4b"},
+        "embed_model_available": True,
+        "chat_model_available": True,
+    }
+    mock_obsidian.list_all_notes.return_value = ["note1.md", "note2.md"]
+    mock_chroma.count.return_value = 42
+    result = mcp_server.health_check()
+    assert result["ollama"]["status"] == "ok"
+    assert result["ollama"]["embed_model"] == "nomic-embed-text"

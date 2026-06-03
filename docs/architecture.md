@@ -8,7 +8,7 @@ The system reads notes from Obsidian, embeds them as semantic vectors, and store
 Agent (Goose / Claude / Cursor / opencode)
         │
         ▼
-   mcp_server.py ──── FastMCP (stdio) ──── 44 tools
+    mcp_server.py ──── FastMCP (stdio) ──── 57 tools
     ├── Search & Retrieval (search_notes, batch_search, retrieve_notes, ...)
     ├── Read & Write (read_note, write_note, list_all_notes, ...)
     ├── Tag Management (add_tags, remove_tags, set_tags, tag_notes, ...)
@@ -59,7 +59,7 @@ Local ChromaDB persistence layer. Provides:
 - `upsert`, `delete_by_path`, `get_by_path`, `get_by_title`, `query` — core CRUD
 - `get_all_documents`, `get_metadata_by_ids` — bulk access
 - `find_duplicate_notes` — semantic dedup via embedding similarity
-- `search_by_tags` — tag-based lookup via `$contains`
+- `search_by_tags` — tag-based lookup via client-side filtering (workaround for ChromaDB `$contains` bug)
 - `get_index_stats` — chunk and note counts
 - `reset_collection` — wipe for model switching
 
@@ -68,7 +68,7 @@ Document IDs use the format `{path}::chunk_{N}`.
 ### entity_store.py
 Persistent inverted index mapping entity names to note paths. Entities are extracted per-note during indexing via LLM (Qwen3:8b) and stored as:
 - **`data/entities.json`** — entity index (JSON), rebuilt from ChromaDB metadata on `sync_index`
-- **`entities_str` metadata** — per-chunk string for ChromaDB `$contains` queries
+- **`entities_str` metadata** — per-chunk string for client-side entity filtering
 - **Graph nodes** — entity nodes in `GraphStore` for cross-referencing
 
 Provides: `add`, `search`, `search_by_type`, `get_note_entities`, `rebuild`, `stats`, `entity_types`.
@@ -113,7 +113,7 @@ Wiki-link parsing and normalization. Extracts `[[wikilinks]]` from markdown text
 YAML frontmatter parsing and manipulation. Used by tag operations.
 
 ### mcp_server.py
-FastMCP server exposing 44 vault tools via stdio transport. Wraps all other modules for agent access. Logs all tool calls to `mcp_calls.log`.
+FastMCP server exposing 57 vault tools via stdio transport. All path parameters are auto-normalized (absolute or vault-relative). Includes a `health_check` tool for backend service status. Wraps all other modules for agent access. Logs all tool calls to `mcp_calls.log`.
 
 ## Data Flow
 
@@ -124,7 +124,7 @@ FastMCP server exposing 44 vault tools via stdio transport. Wraps all other modu
                                │ MCP (stdio)
                                ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                      mcp_server.py (44 tools)                    │
+│                      mcp_server.py (57 tools)                    │
 └────────┬─────────────────────────┬───────────────────────────────┘
          │                         │
          ▼                         ▼

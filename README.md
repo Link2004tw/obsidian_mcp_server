@@ -92,7 +92,9 @@ All commands communicate with the MCP server via stdio — same code path as any
 
 ---
 
-## MCP Tools (44 total)
+## MCP Tools (57 total)
+
+All tools that accept a `path` parameter auto-normalize it — you can pass absolute paths or vault-relative paths interchangeably. The vault prefix is stripped automatically.
 
 ### Search & Retrieval
 | Tool | Description |
@@ -122,7 +124,6 @@ All commands communicate with the MCP server via stdio — same code path as any
 | `remove_tags` | Remove specific tags from YAML frontmatter |
 | `set_tags` | Replace all tags on a note |
 | `batch_tag_notes` | Add tags to multiple notes at once |
-| `tag_notes` | Auto-suggest tags via LLM |
 
 ### Wiki-Link Graph
 | Tool | Description |
@@ -152,6 +153,11 @@ All commands communicate with the MCP server via stdio — same code path as any
 | `search_entities` | Find notes mentioning an entity |
 | `get_note_entities` | Return all entities found in a note |
 | `get_entity_types` | List all entity types in the index |
+
+### Health
+| Tool | Description |
+|------|-------------|
+| `health_check` | Check backend service status (Ollama, ChromaDB, Obsidian API) |
 
 ### Index Management
 | Tool | Description |
@@ -192,7 +198,7 @@ obsidian-ai/
 │       ├── entity_store.py          # Entity extraction and inverted index
 │       ├── graph_store.py           # Wiki-link graph storage and traversal
 │       ├── wiki_links.py            # Wiki-link parsing utilities
-│       └── mcp_server.py            # FastMCP server (44 tools)
+│       └── mcp_server.py            # FastMCP server (57 tools)
 ├── cli.py                           # CLI wrapper (argparse, 15 commands)
 ├── docs/                            # User documentation
 │   ├── setup.md
@@ -392,6 +398,8 @@ mcpServers:
 | `OLLAMA_CHAT_MODEL` | `qwen3:8b` | Chat/LLM model name |
 | `VAULT_PATH` | — | Absolute path to the Obsidian vault (required for file watcher) |
 | `CHROMA_PATH` | `data/chroma_db` | ChromaDB persistent storage path |
+| `READ_WORKERS` | `6` | Parallel note readers for initial fetch |
+| `LLM_CHAT_CONCURRENCY` | `2` | Max concurrent Ollama chat calls during indexing |
 
 ---
 

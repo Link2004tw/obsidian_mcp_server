@@ -4,7 +4,7 @@ import os
 from collections import Counter
 
 from . import config
-from .wiki_links import extract_wiki_links, normalize_wiki_link_target
+from .wiki_links import extract_wiki_links
 
 
 class GraphStore:
@@ -17,21 +17,25 @@ class GraphStore:
         self._path = path or os.path.join(config.data_dir, "graph.json")
         self._adj: dict[str, set[str]] = {}  # source_path -> set of target_paths
         self._title_map: dict[str, str] = {}  # normalized title -> file path
+        self._dirty: bool = False
         self._load()
 
     # ── Persistence ──────────────────────────────────────────────────
 
     def _load(self) -> None:
         if os.path.isfile(self._path):
-            with open(self._path, "r", encoding="utf-8") as f:
+            with open(self._path, encoding="utf-8") as f:
                 content = f.read().strip()
                 if not content:
                     return
                 data = json.loads(content)
             self._adj = {k: set(v) for k, v in data.get("edges", {}).items()}
             self._title_map = dict(data.get("title_map", {}))
+            self._dirty = False
 
     def save(self) -> None:
+        if not self._dirty:
+            return
         os.makedirs(os.path.dirname(self._path) or ".", exist_ok=True)
         data = {
             "edges": {k: sorted(v) for k, v in self._adj.items()},
@@ -39,6 +43,12 @@ class GraphStore:
         }
         with open(self._path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
+        self._dirty = False
+
+    def flush(self) -> None:
+        """Force an immediate write to disk regardless of dirty state."""
+        self._dirty = True
+        self.save()
 
     # ── Title → Path Resolution ─────────────────────────────────────
 
@@ -81,6 +91,7 @@ class GraphStore:
                     # Ensure target node exists even if it has no outgoing links
                     if resolved not in self._adj:
                         self._adj[resolved] = set()
+        self._dirty = True
 
     # ── Edge Operations ──────────────────────────────────────────────
 
@@ -89,6 +100,7 @@ class GraphStore:
         self._adj.setdefault(source, set()).add(target)
         if target not in self._adj:
             self._adj[target] = set()
+        self._dirty = True
 
     def remove_node(self, path: str) -> None:
         """Remove a node and all its edges (also cleans up title map)."""
@@ -98,12 +110,13 @@ class GraphStore:
         title = self._note_title(path)
         if self._title_map.get(title) == path:
             del self._title_map[title]
+        self._dirty = True
 
     def rename_node(self, old: str, new: str) -> None:
         """Rename a node: transfer edges and update references."""
         edges = self._adj.pop(old, set())
         self._adj[new] = edges
-        for source, targets in self._adj.items():
+        for _source, targets in self._adj.items():
             if old in targets:
                 targets.discard(old)
                 targets.add(new)
@@ -113,12 +126,14 @@ class GraphStore:
         if self._title_map.get(old_title) == old:
             del self._title_map[old_title]
             self._title_map[new_title] = new
+        self._dirty = True
 
     def register_title(self, path: str) -> None:
         """Register a note's title in the title map (for incremental indexing)."""
         title = self._note_title(path)
         if title not in self._title_map:
             self._title_map[title] = path
+            self._dirty = True
 
     def node_count(self) -> int:
         """Return the number of nodes in the graph."""
@@ -248,11 +263,13 @@ class GraphStore:
         self._adj.setdefault(eid, set()).add(note_path)
         if note_path not in self._adj:
             self._adj[note_path] = set()
+        self._dirty = True
 
     def remove_entity_edges(self, entity_type: str, entity_name: str) -> None:
         """Remove all edges for a specific entity node."""
         eid = self._entity_node_id(entity_type, entity_name)
         self._adj.pop(eid, None)
+        self._dirty = True
 
     def get_entity_notes(self, entity_type: str, entity_name: str) -> list[str]:
         """Return all note paths linked to an entity."""
@@ -388,6 +405,10 @@ def save() -> None:
     _get_store().save()
 
 
+def flush() -> None:
+    _get_store().flush()
+
+
 def remove_node(path: str) -> None:
     _get_store().remove_node(path)
 
@@ -424,11 +445,11 @@ def bfs(start: str, max_depth: int = 1) -> dict[str, list[str]]:
     return _get_store().bfs(start, max_depth=max_depth)
 
 
-def get_broken_links(all_notes: dict[str, str]) -> list[dict]:
+def get_broken_links(all_notes: dict[str, str]) -> list[dict[str, str]]:
     return _get_store().get_broken_links(all_notes)
 
 
-def stats() -> dict:
+def stats() -> dict[str, int | float | list]:
     return _get_store().stats()
 
 
@@ -436,7 +457,7 @@ def get_orphans() -> list[str]:
     return _get_store().get_orphans()
 
 
-def to_dict() -> dict:
+def to_dict() -> dict[str, dict | dict[str, str]]:
     return _get_store().to_dict()
 
 

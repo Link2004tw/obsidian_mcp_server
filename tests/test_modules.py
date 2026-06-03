@@ -23,8 +23,8 @@ def test_import_frontmatter():
 
 def test_import_chroma_store():
     from obsidian_ai.chroma_store import (
-        count,
         _dedup_paths,
+        count,
         get_by_title,
         upsert,
     )
@@ -40,7 +40,7 @@ def test_import_mcp_server():
 
 
 def test_import_entity_store():
-    from obsidian_ai.entity_store import add, search, clear, save, stats, entity_types
+    from obsidian_ai.entity_store import add, clear, entity_types, save, search, stats
     assert callable(add)
     assert callable(search)
     assert callable(clear)

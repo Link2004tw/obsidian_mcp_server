@@ -1,9 +1,7 @@
 """Tests for pipelines.py — LLM-based pipelines."""
 from unittest.mock import patch
 
-from unittest.mock import patch
-
-from obsidian_ai.pipelines import extract_entities, _EXTRACT_ENTITIES_CACHE
+from obsidian_ai.pipelines import _EXTRACT_ENTITIES_CACHE, extract_entities
 
 
 @patch("obsidian_ai.pipelines.llm_client")

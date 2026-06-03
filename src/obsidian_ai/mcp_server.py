@@ -1,12 +1,23 @@
+import contextlib
 import os
 import re
 from datetime import datetime
+from functools import lru_cache
 
 import requests
-
 from fastmcp import FastMCP
 
-from . import chroma_store, config, entity_store, graph_store, indexer, keyword_search, llm_client, obsidian_client, pipelines
+from . import (
+    chroma_store,
+    config,
+    entity_store,
+    graph_store,
+    indexer,
+    keyword_search,
+    llm_client,
+    obsidian_client,
+    pipelines,
+)
 from .frontmatter import add_tags as fm_add_tags
 from .frontmatter import parse as fm_parse
 from .frontmatter import remove_tags as fm_remove_tags
@@ -14,23 +25,59 @@ from .frontmatter import set_tags as fm_set_tags
 from .logger import get_logger, log_error
 from .todos import (
     add_todo as td_add,
+)
+from .todos import (
     add_todo_from_natural_language as td_nl_add,
+)
+from .todos import (
     ask_vault_about_todo as td_ask_todo,
+)
+from .todos import (
     ask_vault_about_todos as td_ask_todos,
+)
+from .todos import (
     complete_todo as td_complete,
+)
+from .todos import (
     delete_todo as td_delete,
+)
+from .todos import (
     ensure_todos_file_exists as td_ensure,
+)
+from .todos import (
     estimate_completion_date as td_estimate,
+)
+from .todos import (
     get_notes_for_todo as td_notes_for,
+)
+from .todos import (
     get_overdue_summary as td_overdue_summary,
-    get_todos as td_get,
-    get_todos_for_note as td_todos_for_note,
+)
+from .todos import (
     get_todo_stats as td_stats,
+)
+from .todos import (
+    get_todos as td_get,
+)
+from .todos import (
+    get_todos_for_note as td_todos_for_note,
+)
+from .todos import (
     link_todo_to_notes as td_link,
+)
+from .todos import (
     suggest_due_date as td_suggest_due,
+)
+from .todos import (
     suggest_task_priority as td_suggest_priority,
+)
+from .todos import (
     suggest_task_splitting as td_suggest_split,
+)
+from .todos import (
     sync_todos as td_sync,
+)
+from .todos import (
     update_todo as td_update,
 )
 
@@ -66,11 +113,19 @@ def _truncate_snippet(text: str, max_chars: int = SNIPPET_MAX_CHARS) -> str:
     return text[:max_chars] + "..."
 
 
+def _normalize_path(path: str) -> str:
+    """Strip vault prefix so the LLM can pass absolute or relative paths."""
+    vault = config.vault_path.replace("\\", "/").rstrip("/")
+    clean = path.replace("\\", "/")
+    if clean.startswith(vault + "/"):
+        return clean[len(vault) + 1:]
+    if clean.startswith(vault):
+        return clean[len(vault):]
+    return clean
+
+
 # Cache expanded queries to reduce repeated LLM expansion cost.
 _EXPAND_QUERY_CACHE_SIZE = 256
-
-
-from functools import lru_cache
 
 
 @lru_cache(maxsize=_EXPAND_QUERY_CACHE_SIZE)
@@ -156,15 +211,12 @@ def _matches_where(metadata: dict, where: dict | None) -> bool:
             val = metadata.get(field)
             if val is None:
                 return False
-            if "$contains" in op:
-                if op["$contains"] not in str(val):
-                    return False
-            if "$gte" in op:
-                if float(val) < float(op["$gte"]):
-                    return False
-            if "$lte" in op:
-                if float(val) > float(op["$lte"]):
-                    return False
+            if "$contains" in op and op["$contains"] not in str(val):
+                return False
+            if "$gte" in op and float(val) < float(op["$gte"]):
+                return False
+            if "$lte" in op and float(val) > float(op["$lte"]):
+                return False
     return True
 
 
@@ -556,10 +608,7 @@ def search_notes(
             passages = _apply_graph_boost(passages, graph_depth=graph_depth, graph_weight=graph_weight)
 
         # Group by note (collapse chunks) before final trim
-        if group_by_note and passages:
-            passages = _group_by_note(passages, n)
-        else:
-            passages = passages[:n]
+        passages = _group_by_note(passages, n) if group_by_note and passages else passages[:n]
 
         log.info("search_notes — %s results returned", len(passages))
         return passages
@@ -607,7 +656,12 @@ def batch_search(
 
 @mcp.tool()
 def read_note(path: str) -> str:
-    """Read the full content of a note by path."""
+    """Read the full content of a note by path.
+
+    Args:
+        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
+    """
+    path = _normalize_path(path)
     log.info(f"read_note — {path}")
     try:
         content = obsidian_client.get_note(path)
@@ -620,7 +674,13 @@ def read_note(path: str) -> str:
 
 @mcp.tool()
 def write_note(path: str, content: str) -> str:
-    """Create or overwrite a note with the given content."""
+    """Create or overwrite a note with the given content.
+
+    Args:
+        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
+        content: Markdown content to write.
+    """
+    path = _normalize_path(path)
     log.info(f"write_note — {path} — {len(content)} chars")
     try:
         obsidian_client.put_note(path, content)
@@ -645,7 +705,12 @@ def list_all_notes() -> list[str]:
 
 @mcp.tool()
 def list_folder(folder_path: str) -> list[str]:
-    """Return entries directly inside a specific folder (non-recursive)."""
+    """Return entries directly inside a specific folder (non-recursive).
+
+    Args:
+        folder_path: vault-relative folder path, e.g. ``"Folder"`` or ``""`` for root — not a full filesystem path.
+    """
+    folder_path = _normalize_path(folder_path)
     log.info(f"list_folder — {folder_path}")
     try:
         notes = obsidian_client.list_folder(folder_path)
@@ -658,7 +723,12 @@ def list_folder(folder_path: str) -> list[str]:
 
 @mcp.tool()
 def list_folder_deep(folder_path: str) -> list[str]:
-    """Return a list of note paths within a specific folder (recursive)."""
+    """Return a list of note paths within a specific folder (recursive).
+
+    Args:
+        folder_path: vault-relative folder path, e.g. ``"Folder"`` or ``""`` for root — not a full filesystem path.
+    """
+    folder_path = _normalize_path(folder_path)
     log.info(f"list_folder_deep — {folder_path}")
     try:
         notes = obsidian_client.list_folder_deep(folder_path)
@@ -696,7 +766,13 @@ def search_by_tags(tags: list[str], n: int = 10) -> list[dict]:
 
 @mcp.tool()
 def read_note_by_title(title: str, folder_path: str = "") -> str:
-    """Look up a note by its title (filename without extension) and return the full content."""
+    """Look up a note by its title (filename without extension) and return the full content.
+
+    Args:
+        title: filename without extension, e.g. ``"My Note"``.
+        folder_path: optional vault-relative folder to disambiguate, e.g. ``"Folder"`` — not a full filesystem path.
+    """
+    folder_path = _normalize_path(folder_path) if folder_path else ""
     log.info(f"read_note_by_title — title={title}, folder_path={folder_path or '(none)'}")
     try:
         matches = chroma_store.get_by_title(title)
@@ -736,7 +812,13 @@ def read_note_by_title(title: str, folder_path: str = "") -> str:
 
 @mcp.tool()
 def add_tags(path: str, tags: list[str]) -> str:
-    """Add tags to a note's YAML frontmatter. Creates frontmatter if absent. Path must be relative to vault root."""
+    """Add tags to a note's YAML frontmatter. Creates frontmatter if absent.
+
+    Args:
+        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
+        tags: list of tag strings to add.
+    """
+    path = _normalize_path(path)
     log.info(f"add_tags — {path} — tags={tags}")
     try:
         content = obsidian_client.get_note(path)
@@ -752,7 +834,13 @@ def add_tags(path: str, tags: list[str]) -> str:
 
 @mcp.tool()
 def remove_tags(path: str, tags: list[str]) -> str:
-    """Remove specific tags from a note's YAML frontmatter. Path must be relative to vault root."""
+    """Remove specific tags from a note's YAML frontmatter.
+
+    Args:
+        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
+        tags: list of tags to remove.
+    """
+    path = _normalize_path(path)
     log.info(f"remove_tags — {path} — tags={tags}")
     try:
         content = obsidian_client.get_note(path)
@@ -768,7 +856,13 @@ def remove_tags(path: str, tags: list[str]) -> str:
 
 @mcp.tool()
 def set_tags(path: str, tags: list[str]) -> str:
-    """Replace all tags on a note with the given list. Path must be relative to vault root."""
+    """Replace all tags on a note with the given list.
+
+    Args:
+        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
+        tags: new list of tags (replaces all existing).
+    """
+    path = _normalize_path(path)
     log.info(f"set_tags — {path} — tags={tags}")
     try:
         content = obsidian_client.get_note(path)
@@ -802,7 +896,14 @@ def batch_tag_notes(note_paths: list[str], tags: list[str]) -> dict[str, str]:
 
 @mcp.tool()
 def create_backlink(path_a: str, path_b: str) -> str:
-    """Create mutual [[backlinks]] between two notes."""
+    """Create mutual [[backlinks]] between two notes.
+
+    Args:
+        path_a: vault-relative path to the first note.
+        path_b: vault-relative path to the second note.
+    """
+    path_a = _normalize_path(path_a)
+    path_b = _normalize_path(path_b)
     log.info(f"create_backlink — {path_a} <-> {path_b}")
     try:
         name_a = os.path.splitext(os.path.basename(path_a))[0]
@@ -1013,7 +1114,7 @@ def tag_notes(query: str, top_k: int = 5) -> str:
     log.info(f"tag_notes — query={query!r}, top_k={top_k}")
     try:
         result = pipelines.tag_notes(query, top_k=top_k)
-        log.info(f"tag_notes — done")
+        log.info("tag_notes — done")
         return result
     except Exception as e:
         log_error(log, "tag_notes FAILED", exc=e, query=query)
@@ -1193,11 +1294,12 @@ def get_note_entities(path: str) -> list[dict]:
     """Return all entities found in a specific note during indexing.
 
     Args:
-        path: vault-relative path to the note.
+        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
 
     Returns:
         List of dicts with entity_name, entity_type, confidence.
     """
+    path = _normalize_path(path)
     log.info(f"get_note_entities — {path}")
     try:
         results = entity_store.get_note_entities(path)
@@ -1226,11 +1328,12 @@ def get_backlinks(path: str) -> list[dict]:
     """Return all notes linking TO the given note (incoming wiki-link edges).
 
     Args:
-        path: vault-relative path to the note (e.g., "Folder/Note.md").
+        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
 
     Returns:
         List of dicts with path, title, and trace (the path from source to target).
     """
+    path = _normalize_path(path)
     log.info(f"get_backlinks — {path}")
     try:
         sources = graph_store.get_backlinks(path)
@@ -1250,11 +1353,12 @@ def get_linked_notes(path: str) -> list[dict]:
     """Return all notes the given note links TO (outgoing wiki-link edges).
 
     Args:
-        path: vault-relative path to the note.
+        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
 
     Returns:
         List of dicts with path and title.
     """
+    path = _normalize_path(path)
     log.info(f"get_linked_notes — {path}")
     try:
         targets = graph_store.get_outgoing(path)
@@ -1281,10 +1385,8 @@ def get_broken_links() -> list[dict]:
         notes = obsidian_client.list_all_notes()
         all_contents: dict[str, str] = {}
         for path in notes:
-            try:
+            with contextlib.suppress(Exception):
                 all_contents[path] = obsidian_client.get_note(path)
-            except Exception:
-                pass
         broken = graph_store.get_broken_links(all_contents)
         log.info(f"get_broken_links — {len(broken)} broken links")
         return broken
@@ -1318,12 +1420,13 @@ def multi_hop_traversal(path: str, max_depth: int = 2) -> list[dict]:
     (e.g., A -> B -> C shows the chain of wiki-links).
 
     Args:
-        path: vault-relative path to the seed note.
+        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
         max_depth: maximum number of hops to traverse (default 2).
 
     Returns:
         List of dicts with path, title, depth (hop count), and trace (list of paths from seed).
     """
+    path = _normalize_path(path)
     log.info(f"multi_hop_traversal — {path}, depth={max_depth}")
     try:
         results = graph_store.bfs(path, max_depth=max_depth)
@@ -1351,13 +1454,14 @@ def related_notes(path: str, k: int = 10, graph_weight: float = 0.3) -> list[dic
     Notes connected via wiki-links get a proximity boost proportional to graph_weight.
 
     Args:
-        path: vault-relative path to the source note.
+        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
         k: number of results to return.
         graph_weight: how much to weight graph proximity (0.0 = pure semantic, 1.0 = pure graph).
 
     Returns:
         List of dicts with path, title, similarity_score, and is_graph_connected (bool).
     """
+    path = _normalize_path(path)
     log.info(f"related_notes — {path}, k={k}, graph_weight={graph_weight}")
     try:
         # Get the source note's title
@@ -1392,7 +1496,7 @@ def related_notes(path: str, k: int = 10, graph_weight: float = 0.3) -> list[dic
 
         # Score blending
         seen: dict[str, dict] = {}
-        for rank, result in enumerate(semantic_results):
+        for _rank, result in enumerate(semantic_results):
             p = result["path"]
             semantic_score = result.get("similarity_score", 0.5)
             graph_score = 1.0 if p in graph_neighbors else 0.0
@@ -1822,11 +1926,12 @@ def get_todos_for_note(path: str) -> list[dict]:
     """Find todos that reference a specific note (by filename in task text or tags).
 
     Args:
-        path: vault-relative path to the note (e.g. ``"Notes/project.md"``).
+        path: vault-relative path, e.g. ``"Notes/project.md"`` — not a full filesystem path.
 
     Returns:
         List of todo dicts that mention the note.
     """
+    path = _normalize_path(path)
     log.info(f"get_todos_for_note — {path}")
     try:
         return td_todos_for_note(path)
@@ -1859,11 +1964,12 @@ def link_todo_to_notes(todo_id: str, note_paths: list[str]) -> dict:
 
     Args:
         todo_id: the id of the todo to update.
-        note_paths: list of vault-relative note paths to link.
+        note_paths: list of vault-relative note paths to link (not full filesystem paths).
 
     Returns:
         The updated todo dict.
     """
+    note_paths = [_normalize_path(p) for p in note_paths]
     log.info(f"link_todo_to_notes — {todo_id} -> {note_paths}")
     try:
         return td_link(todo_id, note_paths)
@@ -1911,6 +2017,23 @@ def ask_vault_about_todos(query: str) -> str:
         return f"Error: {e}"
 
 
+@mcp.tool()
+def health_check() -> dict:
+    """Check the health of all backend services (Ollama, config, caches).
+
+    Returns a dict with per-service status and an overall health indicator.
+
+    Returns:
+        Dict with ``ollama`` status, ``overall`` (``"healthy"`` or ``"degraded"``).
+    """
+    log.info("health_check")
+    return llm_client.check_health()
+
+
 if __name__ == "__main__":
+    cfg_warnings = config.validate(verbose=True)
+    if cfg_warnings:
+        log.warning(f"Startup config validation found {len(cfg_warnings)} issue(s)")
+    log.info("Starting MCP server — tools registered: %s", len(mcp._tool_manager._tools) if hasattr(mcp, "_tool_manager") else "?")
     mcp.run()
 

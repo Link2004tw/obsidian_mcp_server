@@ -1,5 +1,4 @@
 """Tests for graph_store.py — uses temporary JSON files."""
-import json
 import os
 import tempfile
 
@@ -20,8 +19,11 @@ def test_save_and_load():
 
     try:
         g = _make_graph(tmp)
-        g._adj = {"A.md": {"B.md"}, "B.md": {"C.md"}, "C.md": set()}
-        g._title_map = {"a": "A.md", "b": "B.md", "c": "C.md"}
+        g.add_edge("A.md", "B.md")
+        g.add_edge("B.md", "C.md")
+        g.register_title("A.md")
+        g.register_title("B.md")
+        g.register_title("C.md")
         g.save()
 
         g2 = _make_graph(tmp)

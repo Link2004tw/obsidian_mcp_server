@@ -16,7 +16,7 @@ obsidian-ai/
 │       ├── entity_store.py          # Entity inverted index (extraction, search, persistence)
 │       ├── graph_store.py           # Wiki-link graph (BFS, communities, orphans, export)
 │       ├── wiki_links.py            # Wiki-link parsing/normalization utilities
-│       └── mcp_server.py            # FastMCP server with 44 vault tools
+│       └── mcp_server.py            # FastMCP server with 57 vault tools
 ├── cli.py                           # CLI wrapper (argparse, 15 commands, bridges to MCP)
 ├── docs/                            # Documentation
 │   ├── setup.md

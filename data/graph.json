@@ -1,15 +1,15 @@
 {
   "edges": {
+    "Me/Courses/Cyber security courses.md": [],
+    "Me/Courses/Data analyst courses.md": [],
+    "Me/Death.md": [],
     "Me/Notes/Ba2olak eh.md": [
       "Me/Death.md"
     ],
-    "Me/Death.md": [],
     "Me/To-do list.md": [
       "Me/Courses/Cyber security courses.md",
       "Me/Courses/Data analyst courses.md"
     ],
-    "Me/Courses/Data analyst courses.md": [],
-    "Me/Courses/Cyber security courses.md": [],
     "copilot/copilot-conversations/Growth_Journey_Reflection@20260324_192850.md": [
       "Me/My growth Journey.md"
     ],
@@ -35,7 +35,8 @@
     ],
     "copilot/copilot-conversations/Yearning_for_Humanity@20260326_191201.md": [
       "Me/Quotes/Music Quotes.md"
-    ]
+    ],
+    "management/Lina/Quotes/Favourite phares and expressions.md": []
   },
   "title_map": {
     "all about thinking": "Courses/Data science Course/All about thinking.md",
@@ -194,6 +195,7 @@
     "song": "management/Lina/Song.md",
     "tante dina's favourite": "management/Lina/Tante Dina's favourite.md",
     "coursenote template": "management/templates/CourseNote template.md",
-    "fear template": "management/templates/Fear template.md"
+    "fear template": "management/templates/Fear template.md",
+    "todos": "todos.md"
   }
 }

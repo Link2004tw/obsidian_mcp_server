@@ -40,3 +40,67 @@ chunk_size = 500
 chunk_overlap = 100
 embed_worker_floor = 2
 embed_worker_ceil = 6
+read_workers = int(os.getenv("READ_WORKERS", "6"))
+llm_chat_concurrency = int(os.getenv("LLM_CHAT_CONCURRENCY", "2"))
+
+
+def validate(verbose: bool = True) -> list[str]:
+    """Validate the configuration and environment. Returns a list of warnings (empty if all good)."""
+    import requests
+
+    warnings: list[str] = []
+
+    # Check API key
+    if not obsidian_api_key:
+        warnings.append("OBSIDIAN_API_KEY is not set — Obsidian REST API calls will fail")
+
+    # Check vault path
+    if not vault_path:
+        warnings.append("VAULT_PATH is not set — file-watching and mtime checks disabled")
+    elif not os.path.isdir(vault_path):
+        warnings.append(f"VAULT_PATH '{vault_path}' is not a valid directory")
+
+    # Check Ollama connectivity
+    try:
+        resp = requests.get(f"{ollama_base_url}/api/tags", timeout=5)
+        resp.raise_for_status()
+        models = [m["name"] for m in resp.json().get("models", [])]
+        if verbose:
+            print(f"Ollama at {ollama_base_url} — {len(models)} models available")
+
+        # Check chat model
+        chat_models = [m for m in models if ollama_chat_model in m]
+        if not chat_models:
+            suggestions = [m for m in models if "qwen" in m or "llama" in m or "mistral" in m]
+            hint = f" Available chat models: {suggestions[:5]}" if suggestions else ""
+            warnings.append(f"Chat model '{ollama_chat_model}' not found in Ollama.{hint}")
+        elif verbose:
+            print(f"Chat model: {ollama_chat_model} {' (matched: ' + str(chat_models[0]) + ')' if chat_models[0] != ollama_chat_model else ''}")
+
+        # Check embed model
+        embed_models = [m for m in models if ollama_embed_model in m]
+        if not embed_models:
+            suggestions = [m for m in models if "embed" in m or "nomic" in m]
+            hint = f" Available embed models: {suggestions[:5]}" if suggestions else ""
+            warnings.append(f"Embed model '{ollama_embed_model}' not found in Ollama.{hint}")
+        elif verbose:
+            print(f"Embed model: {ollama_embed_model} {' (matched: ' + str(embed_models[0]) + ')' if embed_models[0] != ollama_embed_model else ''}")
+
+    except requests.exceptions.ConnectionError:
+        warnings.append(f"Cannot connect to Ollama at {ollama_base_url} — is it running?")
+    except Exception as e:
+        warnings.append(f"Ollama check failed: {e}")
+
+    # Check data directory
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+    except Exception as e:
+        warnings.append(f"Cannot create data directory '{data_dir}': {e}")
+
+    if warnings:
+        for w in warnings:
+            print(f"⚠  {w}")
+    elif verbose:
+        print("✓ All config checks passed")
+
+    return warnings

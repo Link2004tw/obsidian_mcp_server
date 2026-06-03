@@ -3,8 +3,8 @@
 import json
 import os
 import re
-import time
 import threading
+import time
 
 _WIKI_LINK_RE = re.compile(r"(?<!!)\[\[([^\[\]\n]+)\]\]")
 

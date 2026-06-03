@@ -1,6 +1,5 @@
 """Tests for config.py — env var loading and _RedactedString."""
 import os
-from unittest.mock import patch
 
 
 def test_default_values():

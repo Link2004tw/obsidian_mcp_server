@@ -1,9 +1,16 @@
 import json
 import os
 import re
-from collections import defaultdict
 
-from . import chroma_store, config, entity_store, graph_store, indexer, keyword_search, llm_client, obsidian_client
+from . import (
+    chroma_store,
+    entity_store,
+    graph_store,
+    indexer,
+    keyword_search,
+    llm_client,
+    obsidian_client,
+)
 from .logger import get_logger, log_error
 
 log = get_logger(__name__)
@@ -132,7 +139,7 @@ def retrieve(
             summary = r["metadata"].get("summary", "")
             if meta_path and summary and meta_path not in note_summaries:
                 note_summaries[meta_path] = summary
-        for path, title in chroma_store._dedup_paths(results):
+        for path, _ in chroma_store._dedup_paths(results):
             semantic_scores[path] = max(semantic_scores.get(path, 0), 1.0)
 
     for path, score in semantic_scores.items():
@@ -148,10 +155,9 @@ def retrieve(
             kw_results = keyword_search.search(query, n=top_k * 3)
             for r in kw_results:
                 path = r["metadata"].get("path", "")
-                if not path or path not in note_scores:
-                    if path:
-                        title = os.path.splitext(os.path.basename(path))[0]
-                        note_scores[path] = {"score": 0.0, "title": title, "matched_by": []}
+                if (not path or path not in note_scores) and path:
+                    title = os.path.splitext(os.path.basename(path))[0]
+                    note_scores[path] = {"score": 0.0, "title": title, "matched_by": []}
                 if path:
                     note_scores[path]["score"] += r.get("bm25_score", 0) * keyword_weight
                     if "keyword" not in note_scores[path]["matched_by"]:
@@ -351,19 +357,13 @@ def extract_entities(text: str, path: str | None = None) -> list[dict]:
 
     try:
         data = json.loads(response)
-        if isinstance(data, list):
-            entities = data
-        else:
-            entities = data.get("entities", [])
+        entities = data if isinstance(data, list) else data.get("entities", [])
     except json.JSONDecodeError:
         match = re.search(r'\{.*\}', response, re.DOTALL)
         if match:
             try:
                 data = json.loads(match.group())
-                if isinstance(data, list):
-                    entities = data
-                else:
-                    entities = data.get("entities", [])
+                entities = data if isinstance(data, list) else data.get("entities", [])
             except (json.JSONDecodeError, TypeError):
                 entities = []
         else:
@@ -462,8 +462,12 @@ def route_query(query_: str) -> str:
     log.info("route_query — %s", query_)
     try:
         from .mcp_server import (
-            ask_vault, read_note, related_notes, search_entities,
-            search_notes, summarize_topic,
+            ask_vault,
+            read_note,
+            related_notes,
+            search_entities,
+            search_notes,
+            summarize_topic,
         )
     except Exception as e:
         log.warning("route_query — failed to import MCP tools: %s", e)
@@ -496,7 +500,7 @@ def route_query(query_: str) -> str:
     params = decision.get("params", {})
 
     # Normalise param names (LLM may use descriptive aliases)
-    _PARAM_ALIASES = {
+    _param_aliases = {
         "ask_vault": {"question": ["question", "query", "ask"]},
         "search_notes": {"query": ["query", "q", "search", "question"]},
         "summarize_topic": {"topic": ["topic", "subject", "query", "question"]},
@@ -505,7 +509,7 @@ def route_query(query_: str) -> str:
         "read_note": {"path": ["path", "note", "note_path"]},
     }
 
-    normalize = _PARAM_ALIASES.get(tool, {})
+    normalize = _param_aliases.get(tool, {})
     for canonical, aliases in normalize.items():
         if canonical not in params:
             for alias in aliases:

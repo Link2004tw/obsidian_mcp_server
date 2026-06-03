@@ -10,7 +10,25 @@ python -m obsidian_ai.mcp_server
 
 The server runs on **stdio** transport — no HTTP port needed. Connect to it via an MCP client or agent.
 
-## Tools (44 total)
+## Path Normalization
+
+All tools that accept a `path` parameter automatically normalize it: if the LLM passes an absolute path or one prefixed with the vault directory, the vault prefix is stripped to produce a vault-relative path. You can pass either format interchangeably.
+
+---
+
+## Tools (57 total)
+
+### Health
+
+#### `health_check()`
+
+Check the health status of all backend services (Ollama, ChromaDB, Obsidian API). Useful before starting a long workflow to confirm everything is available.
+
+**Parameters:** None
+
+**Returns:** `str` — formatted status of each service (Ollama embed model, chat model, API reachability, index state).
+
+---
 
 ### Search & Retrieval
 
@@ -464,6 +482,12 @@ List all entity type labels present in the index. **Parameters:** None
 Re-run the full indexing pipeline. Clears the embedding cache and BM25 index. **Parameters:** None
 
 **Returns:** `str` — confirmation message.
+
+---
+
+#### `health_check()`
+
+*(See Health section above)*
 
 ---
 

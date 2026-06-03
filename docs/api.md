@@ -17,6 +17,8 @@ data_dir: str               # Data storage root, default "data"
 EXCLUDE_PATTERNS: list[str] # Hardcoded exclusion patterns
 chunk_size: int             # Words per chunk, default 500
 chunk_overlap: int          # Word overlap between chunks, default 100
+read_workers: int           # READ_WORKERS, default 6 (parallel note readers)
+llm_chat_concurrency: int   # LLM_CHAT_CONCURRENCY, default 2 (max concurrent LLM calls)
 ```
 
 ---
@@ -118,6 +120,17 @@ vector = llm_client.embed("What is machine learning?")
 **Caching:** Embeddings are cached in memory by text hash to avoid redundant API calls.
 
 **Raises:** `requests.HTTPError` if Ollama fails after all retries.
+
+### `batch_embed(texts: list[str]) -> list[list[float]]`
+
+Embed multiple texts in a single Ollama API call via ``/api/embed``. Checks the persistent cache first; only uncached texts are sent. Falls back to sequential ``embed()`` if the batch endpoint is unavailable (Ollama < 0.3).
+
+```python
+vectors = llm_client.batch_embed(["text one", "text two"])
+# [[0.665, ...], [0.270, ...]]
+```
+
+**Indexer uses this internally to embed all chunks of a note in one API call.**
 
 ### `chat(messages: list[dict], model: str = None, think: bool = True) -> str`
 
@@ -265,7 +278,7 @@ Returns index statistics (`total_chunks`, `unique_notes`).
 
 ### `search_by_tags(tags: list[str], n: int = 20) -> list[dict]`
 
-Find notes containing ALL specified tags (uses `$contains` on `tags_str` metadata). Returns deduplicated results with snippets.
+Find notes containing ALL specified tags via client-side filtering (workaround for ChromaDB `$contains` bug). Returns deduplicated results with snippets.
 
 ```python
 results = chroma_store.search_by_tags(["python", "ml"], n=5)
@@ -307,6 +320,15 @@ Heading-aware chunking. Splits by headings first, then chunks large sections. Re
 ### `run_index() -> None`
 
 Main indexing pipeline. Fetches all notes, chunks them, extracts entities, generates summaries, embeds, and stores in ChromaDB. Prints summary stats and logs errors to `indexer.log`.
+
+**Optimizations:**
+- Notes are read in parallel (``READ_WORKERS`` workers, default 6)
+- Entity extraction and summary generation use a single combined LLM call per note
+- LLM chat calls are limited to ``LLM_CHAT_CONCURRENCY`` concurrent calls (default 2)
+- All chunks of a note are embedded in a single Ollama ``/api/embed`` batch call
+- Per-note wiki-links are cached during graph update and reused in indexing
+- ``delete_by_path`` is skipped for first-time notes
+- Mtime map is stored separately from ChromaDB (avoids expensive full-scan)
 
 ```python
 from obsidian_ai.indexer import run_index
@@ -674,7 +696,7 @@ Normalize a wiki-link target: strips display text after `|`, strips section anch
 
 ## mcp_server.py
 
-FastMCP server exposing **44 vault tools**. Run with `python -m obsidian_ai.mcp_server`. See [MCP Server](mcp_server.md) for detailed tool documentation.
+FastMCP server exposing **57 vault tools**. All path parameters are auto-normalized (absolute or vault-relative accepted). Run with `python -m obsidian_ai.mcp_server`. See [MCP Server](mcp_server.md) for detailed tool documentation.
 
 ### Tools by category
 
@@ -689,6 +711,8 @@ FastMCP server exposing **44 vault tools**. Run with `python -m obsidian_ai.mcp_
 **LLM:** `ask_vault`, `ask_agent`, `summarize_topic`, `tag_notes`
 
 **Entities:** `search_entities`, `get_note_entities`, `get_entity_types`
+
+**Health:** `health_check`
 
 **Index:** `sync_index`, `get_index_stats`, `switch_embedding_model`
 

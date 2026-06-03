@@ -1,18 +1,15 @@
 """Tests for indexer.py — pure functions (no external dependencies)."""
-from unittest.mock import patch
 
 from obsidian_ai.indexer import (
-    chunk_text,
-    split_by_headings,
-    chunk_text_heading_aware,
-    _sanitize,
-    _word_count,
-    _extract_tags,
     _extract_frontmatter_fields,
+    _extract_tags,
+    _sanitize,
     _tags_to_meta,
-    _links_to_meta,
+    _word_count,
+    chunk_text,
+    chunk_text_heading_aware,
+    split_by_headings,
 )
-
 
 # ── _word_count ────────────────────────────────────────────────────
 

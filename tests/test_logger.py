@@ -1,7 +1,6 @@
 """Tests for logger.py — get_logger and log_error."""
 import logging
 import os
-import tempfile
 
 
 def test_get_logger_returns_logger():

@@ -1,8 +1,7 @@
 """Tests for keyword_search.py — BM25 tokenization and search logic."""
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from obsidian_ai import keyword_search
-
 
 # ── _tokenize ──────────────────────────────────────────────────────
 

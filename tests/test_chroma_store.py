@@ -1,6 +1,5 @@
 """Tests for chroma_store.py — uses a temporary ChromaDB instance."""
 import os
-import tempfile
 
 import pytest
 
@@ -154,7 +153,6 @@ def test_dedup_paths():
 # ── search_by_tags ─────────────────────────────────────────────────
 
 
-@pytest.mark.xfail(reason="ChromaDB 1.5.9 $contains operator is broken — pre-existing bug")
 def test_search_by_tags():
     emb = [0.5] * 10
     meta_a = {"path": "a.md", "title": "A", "chunk": 0, "tags_str": ",python,ai,"}
@@ -166,7 +164,6 @@ def test_search_by_tags():
     assert results[0]["path"] == "a.md"
 
 
-@pytest.mark.xfail(reason="ChromaDB 1.5.9 $contains operator is broken — pre-existing bug")
 def test_search_by_tags_multiple():
     emb = [0.5] * 10
     meta = {"path": "a.md", "title": "A", "chunk": 0, "tags_str": ",python,ai,"}
@@ -175,7 +172,6 @@ def test_search_by_tags_multiple():
     assert len(results) == 1
 
 
-@pytest.mark.xfail(reason="ChromaDB 1.5.9 $contains operator is broken — pre-existing bug")
 def test_search_by_tags_no_match():
     emb = [0.5] * 10
     meta = {"path": "a.md", "title": "A", "chunk": 0, "tags_str": ",python,"}

@@ -54,7 +54,7 @@ class EntityStore:
     def _load(self) -> None:
         if os.path.isfile(self._path):
             try:
-                with open(self._path, "r", encoding="utf-8") as f:
+                with open(self._path, encoding="utf-8") as f:
                     content = f.read().strip()
                     if content:
                         self._data = json.loads(content).get("entities", {})
@@ -283,15 +283,15 @@ def add(name: str, type: str, confidence: float, path: str,
     _get_store().add(name, type, confidence, path, chunk_idx, context)
 
 
-def search(name: str, type: str | None = None, n: int = 10) -> list[dict]:
+def search(name: str, type: str | None = None, n: int = 10) -> list[dict[str, str | float]]:
     return _get_store().search(name, type=type, n=n)
 
 
-def search_by_type(type: str, n: int = 20) -> list[dict]:
+def search_by_type(type: str, n: int = 20) -> list[dict[str, str | int]]:
     return _get_store().search_by_type(type, n=n)
 
 
-def get_note_entities(path: str) -> list[dict]:
+def get_note_entities(path: str) -> list[dict[str, str | float]]:
     return _get_store().get_note_entities(path)
 
 
@@ -307,7 +307,7 @@ def save() -> None:
     _get_store().save()
 
 
-def stats() -> dict:
+def stats() -> dict[str, int | dict[str, int]]:
     return _get_store().stats()
 
 
