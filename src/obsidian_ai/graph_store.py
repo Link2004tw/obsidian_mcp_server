@@ -3,6 +3,7 @@ import json
 import os
 from collections import Counter
 
+from . import config
 from .wiki_links import extract_wiki_links, normalize_wiki_link_target
 
 
@@ -12,8 +13,8 @@ class GraphStore:
     Persists to JSON and supports incremental updates during indexing.
     """
 
-    def __init__(self, path: str = "data/graph.json"):
-        self._path = path
+    def __init__(self, path: str | None = None):
+        self._path = path or os.path.join(config.data_dir, "graph.json")
         self._adj: dict[str, set[str]] = {}  # source_path -> set of target_paths
         self._title_map: dict[str, str] = {}  # normalized title -> file path
         self._load()

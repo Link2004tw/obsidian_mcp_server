@@ -105,10 +105,10 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | 6.1 | Todo file structure         | Design `todos.md` format: YAML frontmatter (last_synced, counts), Markdown headers for projects, `[ ]`/`[x]` checkboxes, inline metadata in parentheses `(due:, priority:, tags:)` | Medium     | P2       | ✅     |
 | 6.2 | Auto-create todo file       | `ensure_todos_file_exists()` on first index/MCP startup or when file is deleted; create default templated `todos.md`                                                               | Low        | P2       | ✅     |
 | 6.3 | Core todo MCP tools         | Implement `get_todos`, `add_todo`, `complete_todo`, `update_todo`, `delete_todo`, `sync_todos` — full CRUD against `todos.md`                                                      | High       | P1       | ✅     |
-| 6.4 | Smart todo queries          | `get_overdue_todos`, `get_blocked_todos`, `get_todos_by_project`, `search_todos` (semantic), `get_todo_stats`                                                                      | Medium     | P2       | ⬜     |
-| 6.5 | LLM-powered todo features   | Natural language todo creation (`add_todo_from_natural_language`), `suggest_task_priority`, `suggest_due_date`, `suggest_task_splitting`, `suggest_task_dependencies`              | High       | P3       | ⬜     |
-| 6.6 | Todo reporting & metrics    | `get_todos_by_priority`, `get_burndown_chart(project, days)`, `get_overdue_summary`, `estimate_completion_date`                                                                    | Medium     | P3       | ⬜     |
-| 6.7 | Todo integration with vault | `get_todos_for_note`, `get_notes_for_todo`, `link_todo_to_notes`, `ask_vault_about_todo`, `ask_vault_about_todos`                                                                  | Medium     | P3       | ⬜     |
+| 6.4 | Smart todo queries          | `get_overdue_todos`, `get_blocked_todos`, `get_todos_by_project`, `search_todos`, `get_todo_stats`, `get_todos_by_priority` — all via `get_todos()` parameterized API              | Medium     | P2       | ✅     |
+| 6.5 | LLM-powered todo features   | `add_todo_from_natural_language`, `suggest_task_priority`, `suggest_due_date`, `suggest_task_splitting` — LLM-parsed natural language creation and suggestions                     | High       | P3       | ✅     |
+| 6.6 | Todo reporting & metrics    | `get_todos_by_priority` (tool), `get_overdue_summary` (LLM), `estimate_completion_date` (heuristic)                                                                              | Medium     | P3       | ✅     |
+| 6.7 | Todo integration with vault | `get_todos_for_note`, `get_notes_for_todo`, `link_todo_to_notes`, `ask_vault_about_todo`, `ask_vault_about_todos`                                                                  | Medium     | P3       | ✅     |
 
 ---
 
@@ -250,7 +250,7 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | Phase 3 — LLM + Agent                         | 10          | 6      | 3      | 1      | 10     | 0         |
 | Phase 4 — Polish                              | 12          | 6      | 3      | 3      | 12     | 0         |
 | Phase 5 — Search Improvements                 | 10          | 3      | 4      | 3      | 10     | 0         |
-| Phase 6 — Todo Management                     | 7           | 1      | 3      | 3      | 3      | 4         |
+| Phase 6 — Todo Management                     | 7           | 1      | 3      | 3      | 7      | 0         |
 | Phase 7 — Advanced Features                   | 15          | 1      | 7      | 7      | 15     | 0         |
 | Phase 8 — Performance optimization follow-ups | 4           | 0      | 3      | 1      | 4      | 0         |
 | Phase 9 — Bug Fixes                           | 4           | 2      | 2      | 0      | 4      | 0         |
@@ -260,4 +260,4 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | Phase 13 — New Functionality                  | 2           | 0      | 1      | 1      | 2      | 0         |
 | Phase 14 — Graph RAG                          | 18          | 10     | 4      | 4      | 18     | 0         |
 | Phase 15 — Indexer Performance                | 8           | 1      | 3      | 4      | 8      | 0         |
-| **Total**                                     | **136**     | **59** | **52** | **45** | **132** | **4**     |
+| **Total**                                     | **136**     | **59** | **52** | **45** | **136** | **0**     |

@@ -19,7 +19,7 @@ _EMBED_CACHE_SIZE = 100
 def _request_with_retry(method, url, *, timeout, **kwargs):
     for attempt in range(MAX_RETRIES):
         try:
-            resp = requests.request(method, url, timeout=timeout, **kwargs)
+            resp = requests.request(method, url, timeout=timeout * (2 ** attempt), **kwargs)
             resp.raise_for_status()
             return resp
         except requests.exceptions.ReadTimeout:

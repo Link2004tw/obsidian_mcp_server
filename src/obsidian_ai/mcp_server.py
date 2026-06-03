@@ -14,11 +14,22 @@ from .frontmatter import set_tags as fm_set_tags
 from .logger import get_logger, log_error
 from .todos import (
     add_todo as td_add,
+    add_todo_from_natural_language as td_nl_add,
+    ask_vault_about_todo as td_ask_todo,
+    ask_vault_about_todos as td_ask_todos,
     complete_todo as td_complete,
     delete_todo as td_delete,
     ensure_todos_file_exists as td_ensure,
+    estimate_completion_date as td_estimate,
+    get_notes_for_todo as td_notes_for,
+    get_overdue_summary as td_overdue_summary,
     get_todos as td_get,
+    get_todos_for_note as td_todos_for_note,
     get_todo_stats as td_stats,
+    link_todo_to_notes as td_link,
+    suggest_due_date as td_suggest_due,
+    suggest_task_priority as td_suggest_priority,
+    suggest_task_splitting as td_suggest_split,
     sync_todos as td_sync,
     update_todo as td_update,
 )
@@ -1494,7 +1505,7 @@ def ensure_todo_file() -> str:
 
 
 @mcp.tool()
-def get_todos(project: str = "", status: str = "", overdue: bool = False, blocked: bool = False, search: str = "") -> list[dict]:
+def get_todos(project: str = "", status: str = "", overdue: bool = False, blocked: bool = False, search: str = "", priority: str = "") -> list[dict]:
     """List todos from todos.md, optionally filtered by project and/or status.
 
     Args:
@@ -1503,15 +1514,17 @@ def get_todos(project: str = "", status: str = "", overdue: bool = False, blocke
         overdue: if True, only return pending todos past their due date.
         blocked: if True, only return todos with "blocked"/"blocking" in the task text or a "blocked" tag.
         search: free-text search against task description, tags, and project name (case-insensitive).
+        priority: ``"high"``, ``"medium"``, or ``"low"``. Empty string = all priorities.
 
     Returns:
         List of todo dicts, each with id, task, status, due, priority, tags, project.
     """
-    log.info(f"get_todos — project={project!r}, status={status!r}, overdue={overdue}, blocked={blocked}, search={search!r}")
+    log.info(f"get_todos — project={project!r}, status={status!r}, overdue={overdue}, blocked={blocked}, search={search!r}, priority={priority!r}")
     try:
         proj = project if project else None
         st = status if status else None
-        todos = td_get(project=proj, status=st, overdue=overdue, blocked=blocked, search=search)
+        pri = priority if priority else None
+        todos = td_get(project=proj, status=st, overdue=overdue, blocked=blocked, search=search, priority=pri)
         log.info(f"get_todos — {len(todos)} results")
         return todos
     except Exception as e:
@@ -1663,6 +1676,239 @@ def get_todo_stats() -> dict:
     except Exception as e:
         log_error(log, "get_todo_stats FAILED", exc=e)
         return {"error": str(e)}
+
+
+@mcp.tool()
+def get_todos_by_priority(priority: str, project: str = "", status: str = "") -> list[dict]:
+    """Return todos filtered by priority level.
+
+    Args:
+        priority: ``"high"``, ``"medium"``, or ``"low"``.
+        project: optional project name to narrow results.
+        status: ``"pending"`` or ``"completed"``.
+
+    Returns:
+        List of matching todo dicts.
+    """
+    log.info(f"get_todos_by_priority — priority={priority!r}")
+    try:
+        proj = project if project else None
+        st = status if status else None
+        todos = td_get(project=proj, status=st, priority=priority)
+        log.info(f"get_todos_by_priority — {len(todos)} results")
+        return todos
+    except Exception as e:
+        log_error(log, "get_todos_by_priority FAILED", exc=e)
+        return []
+
+
+@mcp.tool()
+def add_todo_from_natural_language(text: str) -> dict:
+    """Parse a natural language description into a structured todo using the LLM.
+
+    Example: ``"buy groceries tomorrow high priority"`` → creates a todo
+    with task, due date, and priority inferred by the LLM.
+
+    Args:
+        text: free-form task description (e.g. ``"review PR by friday"``).
+
+    Returns:
+        The created todo dict with its assigned id.
+    """
+    log.info(f"add_todo_from_natural_language — {text[:80]}")
+    try:
+        todo = td_nl_add(text)
+        log.info(f"add_todo_from_natural_language — created {todo['id']}")
+        return todo
+    except Exception as e:
+        log_error(log, "add_todo_from_natural_language FAILED", exc=e)
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def suggest_task_priority(task: str) -> str:
+    """Use the LLM to suggest a priority level for a task description.
+
+    Args:
+        task: the task description.
+
+    Returns:
+        ``"high"``, ``"medium"``, or ``"low"``.
+    """
+    log.info(f"suggest_task_priority — {task[:60]}")
+    try:
+        return td_suggest_priority(task)
+    except Exception as e:
+        log_error(log, "suggest_task_priority FAILED", exc=e)
+        return "medium"
+
+
+@mcp.tool()
+def suggest_due_date(task: str) -> str:
+    """Use the LLM to suggest a due date for a task description.
+
+    Args:
+        task: the task description.
+
+    Returns:
+        A ``YYYY-MM-DD`` date string.
+    """
+    log.info(f"suggest_due_date — {task[:60]}")
+    try:
+        return td_suggest_due(task)
+    except Exception as e:
+        log_error(log, "suggest_due_date FAILED", exc=e)
+        from datetime import date, timedelta
+        return (date.today() + timedelta(days=7)).isoformat()
+
+
+@mcp.tool()
+def suggest_task_splitting(task: str) -> list[str]:
+    """Use the LLM to split a large task into smaller sub-tasks.
+
+    Args:
+        task: the task to decompose.
+
+    Returns:
+        A list of sub-task strings.
+    """
+    log.info(f"suggest_task_splitting — {task[:60]}")
+    try:
+        return td_suggest_split(task)
+    except Exception as e:
+        log_error(log, "suggest_task_splitting FAILED", exc=e)
+        return [task]
+
+
+@mcp.tool()
+def get_overdue_summary() -> str:
+    """Generate an LLM-powered summary of all overdue todos.
+
+    Returns:
+        A paragraph-style summary identifying patterns, risks, and recommendations.
+    """
+    log.info("get_overdue_summary")
+    try:
+        result = td_overdue_summary()
+        log.info("get_overdue_summary — done")
+        return result
+    except Exception as e:
+        log_error(log, "get_overdue_summary FAILED", exc=e)
+        return f"Error generating overdue summary: {e}"
+
+
+@mcp.tool()
+def estimate_completion_date(project: str, days: int = 30) -> str:
+    """Estimate when all pending todos in a project will be completed,
+    based on historical completion rate.
+
+    Args:
+        project: the project name (e.g. ``"Work"``).
+        days: lookback window for estimating completion rate (default 30).
+
+    Returns:
+        A ``YYYY-MM-DD`` date string or a message if estimation isn't possible.
+    """
+    log.info(f"estimate_completion_date — project={project!r}, days={days}")
+    try:
+        return td_estimate(project=project, days=days)
+    except Exception as e:
+        log_error(log, "estimate_completion_date FAILED", exc=e)
+        return f"Error: {e}"
+
+
+@mcp.tool()
+def get_todos_for_note(path: str) -> list[dict]:
+    """Find todos that reference a specific note (by filename in task text or tags).
+
+    Args:
+        path: vault-relative path to the note (e.g. ``"Notes/project.md"``).
+
+    Returns:
+        List of todo dicts that mention the note.
+    """
+    log.info(f"get_todos_for_note — {path}")
+    try:
+        return td_todos_for_note(path)
+    except Exception as e:
+        log_error(log, "get_todos_for_note FAILED", exc=e)
+        return []
+
+
+@mcp.tool()
+def get_notes_for_todo(todo_id: str) -> list[str]:
+    """Find note paths referenced (via [[wiki-link]]) in a todo's task description.
+
+    Args:
+        todo_id: the id of the todo.
+
+    Returns:
+        List of vault-relative note paths linked from the todo.
+    """
+    log.info(f"get_notes_for_todo — {todo_id}")
+    try:
+        return td_notes_for(todo_id)
+    except Exception as e:
+        log_error(log, "get_notes_for_todo FAILED", exc=e)
+        return []
+
+
+@mcp.tool()
+def link_todo_to_notes(todo_id: str, note_paths: list[str]) -> dict:
+    """Link a todo to one or more notes by appending [[wiki-links]] to its task text.
+
+    Args:
+        todo_id: the id of the todo to update.
+        note_paths: list of vault-relative note paths to link.
+
+    Returns:
+        The updated todo dict.
+    """
+    log.info(f"link_todo_to_notes — {todo_id} -> {note_paths}")
+    try:
+        return td_link(todo_id, note_paths)
+    except Exception as e:
+        log_error(log, "link_todo_to_notes FAILED", exc=e)
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def ask_vault_about_todo(todo_id: str) -> str:
+    """Ask the LLM about a specific todo — provides insights, suggestions,
+    or context by combining the todo with related notes from the vault.
+
+    Args:
+        todo_id: the id of the todo.
+
+    Returns:
+        LLM-generated analysis and suggestions.
+    """
+    log.info(f"ask_vault_about_todo — {todo_id}")
+    try:
+        return td_ask_todo(todo_id)
+    except Exception as e:
+        log_error(log, "ask_vault_about_todo FAILED", exc=e)
+        return f"Error: {e}"
+
+
+@mcp.tool()
+def ask_vault_about_todos(query: str) -> str:
+    """Ask a natural-language question about all todos in the vault.
+
+    The LLM answers using the full todo list and aggregate statistics.
+
+    Args:
+        query: your question (e.g. ``"What's my most overdue project?"``).
+
+    Returns:
+        LLM-generated answer.
+    """
+    log.info(f"ask_vault_about_todos — {query[:80]}")
+    try:
+        return td_ask_todos(query)
+    except Exception as e:
+        log_error(log, "ask_vault_about_todos FAILED", exc=e)
+        return f"Error: {e}"
 
 
 if __name__ == "__main__":

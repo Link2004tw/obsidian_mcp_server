@@ -34,10 +34,8 @@ Thumbs.db
 logs/
 *.log
 
-# Data
-data/chroma_db/
-data/*.json
-chroma_db/
+# Data (all caches, ChromaDB, entity/summary caches, graph, etc.)
+data/
 
 # Graphify
 .graphify_*
