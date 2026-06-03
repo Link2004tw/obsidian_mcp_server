@@ -1,6 +1,6 @@
 import re
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from . import config, obsidian_client
@@ -184,14 +184,97 @@ def _rebuild_file(projects: dict[str, list[dict]]) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
-def get_todos(project: str | None = None, status: str | None = None) -> list[dict]:
+def _is_blocked(todo: dict) -> bool:
+    task = (todo.get("task") or "").lower()
+    if "blocked" in task or "blocking" in task:
+        return True
+    return "blocked" in [t.lower() for t in (todo.get("tags") or [])]
+
+
+def _score_search(todo: dict, query_lower: str) -> int:
+    score = 0
+    task = (todo.get("task") or "").lower()
+    if query_lower in task:
+        score += 2
+    for tag in todo.get("tags") or []:
+        if query_lower in tag.lower():
+            score += 1
+    proj = (todo.get("project") or "").lower()
+    if query_lower in proj:
+        score += 1
+    return score
+
+
+def get_todos(project: str | None = None, status: str | None = None, *, overdue: bool = False, blocked: bool = False, search: str = "") -> list[dict]:
+    ensure_todos_file_exists()
     data = parse_todos()
     results = list(data["flat"])
     if project:
         results = [t for t in results if t["project"] == project]
     if status:
         results = [t for t in results if t["status"] == status]
+    if overdue:
+        today = date.today().isoformat()
+        results = [t for t in results if t["status"] == "pending" and t.get("due") and t["due"] < today]
+    if blocked:
+        results = [t for t in results if _is_blocked(t)]
+    if search:
+        q = search.lower()
+        results = [t for t in results if _score_search(t, q) > 0]
+        results.sort(key=lambda t: _score_search(t, q), reverse=True)
     return results
+
+
+def get_todo_stats() -> dict:
+    data = parse_todos()
+    todos = data["flat"]
+    today = date.today().isoformat()
+
+    total = len(todos)
+    completed = sum(1 for t in todos if t["status"] == "completed")
+    pending = total - completed
+    overdue = sum(1 for t in todos if t["status"] == "pending" and t.get("due") and t["due"] < today)
+
+    projects: dict[str, dict[str, int]] = {}
+    for t in todos:
+        proj = t["project"]
+        if proj not in projects:
+            projects[proj] = {"total": 0, "completed": 0, "pending": 0, "overdue": 0}
+        projects[proj]["total"] += 1
+        if t["status"] == "completed":
+            projects[proj]["completed"] += 1
+        else:
+            projects[proj]["pending"] += 1
+            if t.get("due") and t["due"] < today:
+                projects[proj]["overdue"] += 1
+
+    priorities: dict[str, int] = {}
+    has_due = 0
+    no_due_pending = 0
+    tags: dict[str, int] = {}
+    for t in todos:
+        pri = t.get("priority")
+        if pri:
+            priorities[pri] = priorities.get(pri, 0) + 1
+        if t.get("due"):
+            has_due += 1
+        elif t["status"] == "pending":
+            no_due_pending += 1
+        for tag in t.get("tags") or []:
+            tags[tag] = tags.get(tag, 0) + 1
+
+    return {
+        "total": total,
+        "completed": completed,
+        "pending": pending,
+        "overdue": overdue,
+        "projects": projects,
+        "priorities": priorities,
+        "has_due_dates": has_due,
+        "no_due_dates": no_due_pending,
+        "tags": dict(sorted(tags.items(), key=lambda x: -x[1])),
+        "last_synced": data["frontmatter"].get("last_synced", ""),
+    }
 
 
 def _find_todo_by_id(data: dict, todo_id: str) -> tuple[str, int, dict] | None:

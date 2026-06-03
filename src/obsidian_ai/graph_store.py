@@ -54,7 +54,7 @@ class GraphStore:
             if title not in self._title_map:
                 self._title_map[title] = path
 
-    def _resolve_link(self, link_target: str) -> str | None:
+    def resolve_link(self, link_target: str) -> str | None:
         """Resolve a normalized wiki-link target to a file path."""
         return self._title_map.get(link_target)
 
@@ -74,7 +74,7 @@ class GraphStore:
         for path, content in all_notes.items():
             links = extract_wiki_links(content)
             for link in links:
-                resolved = self._resolve_link(link)
+                resolved = self.resolve_link(link)
                 if resolved is not None and resolved != path:
                     self._adj.setdefault(path, set()).add(resolved)
                     # Ensure target node exists even if it has no outgoing links
@@ -90,10 +90,13 @@ class GraphStore:
             self._adj[target] = set()
 
     def remove_node(self, path: str) -> None:
-        """Remove a node and all its edges."""
+        """Remove a node and all its edges (also cleans up title map)."""
         self._adj.pop(path, None)
         for targets in self._adj.values():
             targets.discard(path)
+        title = self._note_title(path)
+        if self._title_map.get(title) == path:
+            del self._title_map[title]
 
     def rename_node(self, old: str, new: str) -> None:
         """Rename a node: transfer edges and update references."""
@@ -115,6 +118,10 @@ class GraphStore:
         title = self._note_title(path)
         if title not in self._title_map:
             self._title_map[title] = path
+
+    def node_count(self) -> int:
+        """Return the number of nodes in the graph."""
+        return len(self._adj)
 
     # ── Queries ──────────────────────────────────────────────────────
 
@@ -158,25 +165,27 @@ class GraphStore:
     def stats(self) -> dict:
         """Return graph statistics (excluding entity nodes)."""
         note_adj = self._non_entity_nodes()
-        nodes = len(note_adj)
-        edge_count = sum(len(t) for t in note_adj.values())
+        # Filter entity targets from adjacency for stats
+        adj = {k: {t for t in v if not self.is_entity_node(t)} for k, v in note_adj.items()}
+        nodes = len(adj)
+        edge_count = sum(len(t) for t in adj.values())
         avg_degree = edge_count / nodes if nodes > 0 else 0
 
         # Incoming edge counts
         incoming: Counter = Counter()
-        for targets in self._adj.values():
+        for targets in adj.values():
             for t in targets:
                 incoming[t] += 1
 
         # Total degree (in + out)
         degree: Counter = Counter()
-        for src, targets in self._adj.items():
+        for src, targets in adj.items():
             degree[src] += len(targets)  # outgoing
             degree[src] += incoming.get(src, 0)  # incoming
             for t in targets:
                 degree[t] += 1  # incoming from src
 
-        isolated = [p for p in self._adj if not self._adj[p] and p not in incoming]
+        isolated = [p for p in adj if not adj[p] and p not in incoming]
         hubs = degree.most_common(5)
 
         return {
@@ -199,7 +208,7 @@ class GraphStore:
         broken: list[dict] = []
         for path, content in all_notes.items():
             for link in extract_wiki_links(content):
-                resolved = self._resolve_link(link)
+                resolved = self.resolve_link(link)
                 if resolved is None:
                     broken.append({
                         "source_path": path,
@@ -356,3 +365,83 @@ class GraphStore:
         unique = sorted(set(labels.values()))
         remap = {old: new for new, old in enumerate(unique)}
         return {node: remap[lbl] for node, lbl in labels.items()}
+
+
+# ── Module-level singleton ──────────────────────────────────────────
+
+_store: GraphStore | None = None
+
+
+def _get_store() -> GraphStore:
+    global _store
+    if _store is None:
+        _store = GraphStore()
+    return _store
+
+
+def rebuild(all_notes: dict[str, str]) -> None:
+    _get_store().rebuild(all_notes)
+
+
+def save() -> None:
+    _get_store().save()
+
+
+def remove_node(path: str) -> None:
+    _get_store().remove_node(path)
+
+
+def register_title(path: str) -> None:
+    _get_store().register_title(path)
+
+
+def resolve_link(link_target: str) -> str | None:
+    return _get_store().resolve_link(link_target)
+
+
+def add_edge(source: str, target: str) -> None:
+    _get_store().add_edge(source, target)
+
+
+def rename_node(old: str, new: str) -> None:
+    _get_store().rename_node(old, new)
+
+
+def node_count() -> int:
+    return _get_store().node_count()
+
+
+def get_backlinks(path: str) -> list[str]:
+    return _get_store().get_backlinks(path)
+
+
+def get_outgoing(path: str) -> list[str]:
+    return _get_store().get_outgoing(path)
+
+
+def bfs(start: str, max_depth: int = 1) -> dict[str, list[str]]:
+    return _get_store().bfs(start, max_depth=max_depth)
+
+
+def get_broken_links(all_notes: dict[str, str]) -> list[dict]:
+    return _get_store().get_broken_links(all_notes)
+
+
+def stats() -> dict:
+    return _get_store().stats()
+
+
+def get_orphans() -> list[str]:
+    return _get_store().get_orphans()
+
+
+def to_dict() -> dict:
+    return _get_store().to_dict()
+
+
+def to_dot() -> str:
+    return _get_store().to_dot()
+
+
+def label_propagation(max_iter: int = 100) -> dict[str, int]:
+    return _get_store().label_propagation(max_iter=max_iter)

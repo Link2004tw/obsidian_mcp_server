@@ -32,3 +32,10 @@ vault_path = os.getenv("VAULT_PATH", "")
 
 EXCLUDE_PATTERNS = ["_gsdata_", ".gsbak", ".git", "__pycache__", "node_modules", ".excalidraw.md"]
 todo_file = os.getenv("TODO_FILE", "todos.md")
+
+# Indexer tuning constants
+skip_min_tokens = 20
+chunk_size = 500
+chunk_overlap = 100
+embed_worker_floor = 2
+embed_worker_ceil = 6

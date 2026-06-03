@@ -3,9 +3,21 @@
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 sys.path.insert(0, "src")
 
 from obsidian_ai import obsidian_client
+
+
+@pytest.fixture(autouse=True)
+def _clear_note_cache():
+    obsidian_client.clear_note_cache()
+    # Also wipe the on-disk cache to prevent stale data from affecting tests
+    cache_path = obsidian_client._get_note_list_cache_path()
+    import os
+    if os.path.exists(cache_path):
+        os.remove(cache_path)
 
 
 def _mock_response(json_data: dict, status: int = 200) -> MagicMock:

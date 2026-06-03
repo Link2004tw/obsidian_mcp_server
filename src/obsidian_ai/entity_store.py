@@ -2,6 +2,7 @@
 
 import json
 import os
+import threading
 from collections import defaultdict
 
 from . import config
@@ -45,6 +46,7 @@ class EntityStore:
             os.path.dirname(config.chroma_path) or "data", "entities.json"
         )
         self._data: dict[str, dict] = {}  # normalized_name -> entity record
+        self._lock = threading.Lock()
         self._load()
 
     # ── Persistence ──────────────────────────────────────────────────
@@ -60,9 +62,11 @@ class EntityStore:
                 self._data = {}
 
     def save(self) -> None:
+        with self._lock:
+            data_copy = dict(self._data)
         os.makedirs(os.path.dirname(self._path) or ".", exist_ok=True)
         with open(self._path, "w", encoding="utf-8") as f:
-            json.dump({"entities": self._data}, f, indent=2, ensure_ascii=False)
+            json.dump({"entities": data_copy}, f, indent=2, ensure_ascii=False)
 
     # ── Add ──────────────────────────────────────────────────────────
 
@@ -75,40 +79,41 @@ class EntityStore:
         chunk_idx: int = 0,
         context: str = "",
     ) -> None:
-        """Record an entity mention found in a note chunk."""
+        """Record an entity mention found in a note chunk. Thread-safe."""
         if type not in _ENTITY_TYPES:
             type = "Concept"
         key = _normalize(name)
-        record = self._data.get(key)
-        if record is None:
-            record = {
-                "canonical": name,
-                "type": type,
-                "aliases": [],
-                "mentions": [],
-            }
-            self._data[key] = record
-        else:
-            if record["type"] != type and not _is_broader_type(record["type"], type):
-                record["type"] = type
-            _maybe_add_alias(record, name)
+        with self._lock:
+            record = self._data.get(key)
+            if record is None:
+                record = {
+                    "canonical": name,
+                    "type": type,
+                    "aliases": [],
+                    "mentions": [],
+                }
+                self._data[key] = record
+            else:
+                if record["type"] != type and not _is_broader_type(record["type"], type):
+                    record["type"] = type
+                _maybe_add_alias(record, name)
 
-        mention: dict = {
-            "path": path,
-            "chunk_idx": chunk_idx,
-            "context": context[:200],
-            "confidence": round(confidence, 4),
-        }
-        # Deduplicate mentions for same (path, chunk_idx)
-        for existing in record["mentions"]:
-            if existing["path"] == path and existing["chunk_idx"] == chunk_idx:
-                if confidence > existing["confidence"]:
-                    existing["confidence"] = round(confidence, 4)
-                    existing["context"] = context[:200]
-                return
-        record["mentions"].append(mention)
-        # Keep mentions sorted by confidence descending
-        record["mentions"].sort(key=lambda m: m["confidence"], reverse=True)
+            mention: dict = {
+                "path": path,
+                "chunk_idx": chunk_idx,
+                "context": context[:200],
+                "confidence": round(confidence, 4),
+            }
+            # Deduplicate mentions for same (path, chunk_idx)
+            for existing in record["mentions"]:
+                if existing["path"] == path and existing["chunk_idx"] == chunk_idx:
+                    if confidence > existing["confidence"]:
+                        existing["confidence"] = round(confidence, 4)
+                        existing["context"] = context[:200]
+                    return
+            record["mentions"].append(mention)
+            # Keep mentions sorted by confidence descending
+            record["mentions"].sort(key=lambda m: m["confidence"], reverse=True)
 
     # ── Search ───────────────────────────────────────────────────────
 
@@ -175,8 +180,9 @@ class EntityStore:
     # ── Rebuild ──────────────────────────────────────────────────────
 
     def clear(self) -> None:
-        """Wipe all entity data (used on full re-index)."""
-        self._data = {}
+        """Wipe all entity data (used on full re-index). Thread-safe."""
+        with self._lock:
+            self._data = {}
 
     def rebuild(self) -> None:
         """Rebuild the entity store from ChromaDB metadata."""
@@ -241,18 +247,24 @@ def _get_store() -> EntityStore:
 # ── Helper functions ────────────────────────────────────────────────
 
 
+_TYPE_SPECIFICITY = {
+    "Hardware": "Technology",
+    "Technology": "Concept",
+    "Project": "Concept",
+    "Person": "Concept",
+    "Location": "Concept",
+    "Event": "Concept",
+}
+
+
 def _is_broader_type(current: str, new: str) -> bool:
     """Check if *new* is a broader (more general) type than *current*."""
-    hierarchy = {
-        "Hardware": ["Technology"],
-        "Technology": ["Concept"],
-        "Project": ["Concept"],
-        "Person": ["Concept"],
-        "Location": ["Concept"],
-        "Event": ["Concept"],
-        "Concept": [],
-    }
-    return new in hierarchy.get(current, []) or current == "Concept"
+    t = _TYPE_SPECIFICITY.get(current)
+    while t is not None:
+        if t == new:
+            return True
+        t = _TYPE_SPECIFICITY.get(t)
+    return False
 
 
 def _maybe_add_alias(record: dict, name: str) -> None:

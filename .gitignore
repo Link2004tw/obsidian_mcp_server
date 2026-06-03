@@ -7,8 +7,7 @@ __pycache__/
 dist/
 build/
 *.whl
-dev/improvement.md
-
+dev/
 # Optimization notes
 optimizations.md
 
@@ -37,6 +36,7 @@ logs/
 
 # Data
 data/chroma_db/
+data/*.json
 chroma_db/
 
 # Graphify

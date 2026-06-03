@@ -2,6 +2,8 @@ import os
 import re
 from datetime import datetime
 
+import requests
+
 from fastmcp import FastMCP
 
 from . import chroma_store, config, entity_store, graph_store, indexer, keyword_search, llm_client, obsidian_client, pipelines
@@ -10,13 +12,16 @@ from .frontmatter import parse as fm_parse
 from .frontmatter import remove_tags as fm_remove_tags
 from .frontmatter import set_tags as fm_set_tags
 from .logger import get_logger, log_error
-from .todos import add_todo as td_add  # td_ prefix avoids name clash
-from .todos import complete_todo as td_complete
-from .todos import delete_todo as td_delete
-from .todos import ensure_todos_file_exists as td_ensure
-from .todos import get_todos as td_get
-from .todos import sync_todos as td_sync
-from .todos import update_todo as td_update
+from .todos import (
+    add_todo as td_add,
+    complete_todo as td_complete,
+    delete_todo as td_delete,
+    ensure_todos_file_exists as td_ensure,
+    get_todos as td_get,
+    get_todo_stats as td_stats,
+    sync_todos as td_sync,
+    update_todo as td_update,
+)
 
 log = get_logger("obsidian_ai.mcp_server", log_file="mcp_calls.log")
 
@@ -279,6 +284,35 @@ def _hybrid_search(
     return passages
 
 
+def _group_by_note(passages: list[dict], n: int) -> list[dict]:
+    """Collapse chunk-level passages into note-level results.
+
+    For each note, keeps the highest similarity score and the snippet from
+    the best-matching chunk. Results are sorted by score descending.
+    """
+    grouped: dict[str, dict] = {}
+    counts: dict[str, int] = {}
+    for p in passages:
+        path = p["path"]
+        score = p["similarity_score"]
+        counts[path] = counts.get(path, 0) + 1
+        if path not in grouped or score > grouped[path]["similarity_score"]:
+            grouped[path] = {
+                "path": path,
+                "title": p["title"],
+                "similarity_score": score,
+                "snippet": p["snippet"],
+            }
+
+    for entry in grouped.values():
+        path = entry["path"]
+        entry["similarity_score"] = round(entry["similarity_score"], 4)
+        entry["chunk_count"] = counts[path]
+
+    results = sorted(grouped.values(), key=lambda x: x["similarity_score"], reverse=True)
+    return results[:n]
+
+
 # ── tools ──────────────────────────────────────────────────────────
 
 
@@ -304,6 +338,75 @@ def get_index_stats() -> str:
     except Exception as e:
         log_error(log, "get_index_stats FAILED", exc=e)
         return f"Error: {e}"
+
+
+@mcp.tool()
+def find_duplicate_notes(threshold: float = 0.9, n: int = 20) -> list[dict]:
+    """Find near-duplicate notes via embedding similarity.
+
+    Args:
+        threshold: cosine similarity threshold (0.0-1.0), default 0.9. Higher = must be more similar.
+        n: maximum number of duplicate pairs to return (default 20).
+    """
+    log.info(f"find_duplicate_notes — threshold={threshold}, n={n}")
+    try:
+        results = chroma_store.find_duplicate_notes(threshold=threshold, n=n)
+        log.info(f"find_duplicate_notes — {len(results)} pairs found")
+        return results
+    except Exception as e:
+        log_error(log, "find_duplicate_notes FAILED", exc=e)
+        return []
+
+
+def _apply_entity_search(
+    passages: list[dict],
+    query: str,
+    entity_types: list[str] | None = None,
+    where: dict | None = None,
+) -> list[dict]:
+    """Expand results by looking up entities matching the query.
+
+    Queries the entity store for the query text. For each matching entity,
+    adds all notes that mention it. Merges with existing passages,
+    deduplicating by path and keeping the higher score.
+    """
+    entity_results = entity_store.search(query)
+    if not entity_results:
+        return passages
+
+    if entity_types:
+        entity_results = [r for r in entity_results if r["entity_type"] in entity_types]
+
+    # Index existing passages by path for fast dedup
+    existing = {p["path"]: p for p in passages}
+
+    added = 0
+    for r in entity_results:
+        path = r["path"]
+        title = os.path.splitext(os.path.basename(path))[0]
+        score = round(r["confidence"] * 0.9, 4)
+        snippet = r.get("snippet") or f"[{r['entity_type']}] {r['entity_name']}"
+
+        if path in existing:
+            existing_entry = existing[path]
+            if score > existing_entry["similarity_score"]:
+                existing_entry["similarity_score"] = score
+                existing_entry["is_entity_match"] = True
+        else:
+            passages.append({
+                "path": path,
+                "title": title,
+                "matched_chunk_idx": 0,
+                "similarity_score": score,
+                "snippet": _truncate_snippet(snippet),
+                "is_entity_match": True,
+            })
+            added += 1
+
+    if added:
+        passages.sort(key=lambda p: p["similarity_score"], reverse=True)
+        log.info("_apply_entity_search — %s entity results added", added)
+    return passages
 
 
 def _apply_graph_boost(passages: list[dict], graph_depth: int = 1, graph_weight: float = 0.2) -> list[dict]:
@@ -369,12 +472,18 @@ def search_notes(
     use_graph: bool = False,
     graph_depth: int = 1,
     graph_weight: float = 0.2,
+    use_entities: bool = False,
+    entity_types: list[str] | None = None,
+    group_by_note: bool = False,
 ) -> list[dict]:
     """Search notes semantically with optional metadata filters.
 
-    Returns passage-level results — each result is a single matching chunk
-    with its snippet, chunk index within the note, and similarity score.
-    Multiple passages from the same note may appear.
+    By default returns passage-level results — each result is a single
+    matching chunk. Multiple passages from the same note may appear.
+
+    When ``group_by_note=True``, collapses chunk-level results into one
+    result per note with the highest similarity score, best snippet, and
+    a ``chunk_count`` field showing how many chunks matched.
 
     Filters (all optional):
     - ``tags`` — only notes having ALL of these YAML tags
@@ -393,20 +502,20 @@ def search_notes(
     - ``use_graph`` — if True, expand results via wiki-link graph traversal
     - ``graph_depth`` — max hops for graph traversal (default 1)
     - ``graph_weight`` — weight for graph proximity boost (0.0-1.0, default 0.2)
+    - ``use_entities`` — if True, also search the entity index for notes matching the query entity name
+    - ``entity_types`` — optional list of entity types to filter by (e.g. ``["Person"]``)
+    - ``group_by_note`` — if True, collapse chunk-level results into note-level (default False)
 
     Returns:
-        A list of dicts, each with:
-        - ``path`` — vault-relative note path
-        - ``title`` — note title (basename without extension)
-        - ``matched_chunk_idx`` — index of the matching chunk within the note
-        - ``similarity_score`` — 0-to-1 score (higher = more relevant)
-        - ``snippet`` — the matching passage text, trimmed to ~400 chars
+        Passage-level results (default) or note-level results (when ``group_by_note=True``).
+        Each dict has ``path``, ``title``, ``similarity_score``, ``snippet``,
+        and when grouped: ``chunk_count`` (how many chunks matched this note).
     """
     log.info(
-        "search_notes — query=%s, n=%s, tags=%s, exclude_tags=%s, folder=%s, date_after=%s, date_before=%s, expand=%s, kw_weight=%s, min_sim=%s, div_penalty=%s, use_graph=%s, graph_depth=%s, graph_weight=%s",
+        "search_notes — query=%s, n=%s, tags=%s, exclude_tags=%s, folder=%s, date_after=%s, date_before=%s, expand=%s, kw_weight=%s, min_sim=%s, div_penalty=%s, use_graph=%s, graph_depth=%s, graph_weight=%s, use_entities=%s, entity_types=%s, group_by_note=%s",
         query, n, tags, exclude_tags, folder, date_after, date_before,
         expand_query, keyword_weight, min_similarity, diversity_penalty,
-        use_graph, graph_depth, graph_weight,
+        use_graph, graph_depth, graph_weight, use_entities, entity_types, group_by_note,
     )
     try:
         where = _build_search_where(tags=tags, folder=folder, date_after=date_after, date_before=date_before)
@@ -427,15 +536,62 @@ def search_notes(
             exclude_tags=exclude_tags,
         )
 
+        # Entity-augmented expansion
+        if use_entities:
+            passages = _apply_entity_search(passages, query, entity_types=entity_types)
+
         # Graph-augmented expansion
         if use_graph and passages:
             passages = _apply_graph_boost(passages, graph_depth=graph_depth, graph_weight=graph_weight)
 
-        log.info("search_notes — %s passages returned", len(passages))
+        # Group by note (collapse chunks) before final trim
+        if group_by_note and passages:
+            passages = _group_by_note(passages, n)
+        else:
+            passages = passages[:n]
+
+        log.info("search_notes — %s results returned", len(passages))
         return passages
     except Exception as e:
         log_error(log, "search_notes FAILED", exc=e, query=query, n=n)
         return []
+
+
+@mcp.tool()
+def batch_search(
+    queries: list[str],
+    n: int = 5,
+    tags: list[str] | None = None,
+    exclude_tags: list[str] | None = None,
+    folder: str | None = None,
+    keyword_weight: float = 0.0,
+    min_similarity: float | None = None,
+) -> dict[str, list[dict]]:
+    """Run multiple searches in one call. Returns ``dict[query, results]``.
+
+    Each search runs ``search_notes``-style hybrid search (semantic + BM25)
+    with optional metadata filters. For per-query fine-grained params
+    (expand_query, graph, entities), use individual ``search_notes`` calls.
+    """
+    log.info("batch_search — %d queries, n=%s", len(queries), n)
+    where = _build_search_where(tags=tags, folder=folder)
+    results: dict[str, list[dict]] = {}
+    for q in queries:
+        try:
+            passages = _hybrid_search(
+                queries=[q],
+                n=n,
+                keyword_weight=keyword_weight,
+                min_similarity=min_similarity,
+                diversity_penalty=0.0,
+                where=where,
+                exclude_tags=exclude_tags,
+            )
+            results[q] = passages[:n]
+        except Exception as e:
+            log_error(log, f"batch_search — query failed: {q}", exc=e)
+            results[q] = []
+    return results
 
 
 @mcp.tool()
@@ -616,6 +772,24 @@ def set_tags(path: str, tags: list[str]) -> str:
 
 
 @mcp.tool()
+def batch_tag_notes(note_paths: list[str], tags: list[str]) -> dict[str, str]:
+    """Add tags to multiple notes at once. Returns ``dict[path, result_message]``."""
+    log.info("batch_tag_notes — %d notes, tags=%s", len(note_paths), tags)
+    results: dict[str, str] = {}
+    for path in note_paths:
+        try:
+            content = obsidian_client.get_note(path)
+            new_content = fm_add_tags(content, tags)
+            obsidian_client.put_note(path, new_content)
+            meta, _ = fm_parse(new_content)
+            results[path] = f"Tags added: {meta.get('tags', [])}"
+        except Exception as e:
+            log_error(log, f"batch_tag_notes FAILED: {path}", exc=e, tags=tags)
+            results[path] = f"Error: {e}"
+    return results
+
+
+@mcp.tool()
 def create_backlink(path_a: str, path_b: str) -> str:
     """Create mutual [[backlinks]] between two notes."""
     log.info(f"create_backlink — {path_a} <-> {path_b}")
@@ -659,18 +833,95 @@ def sync_index() -> str:
 
 
 @mcp.tool()
-def ask_vault(question: str, top_k: int = 3, use_graph: bool = False, graph_depth: int = 1) -> str:
+def switch_embedding_model(model_name: str) -> str:
+    """Switch the embedding model at runtime.
+
+    Updates the config, clears the embed cache, resets the ChromaDB collection,
+    and re-indexes the entire vault with the new model.
+
+    The model must already exist in Ollama (pull it first with ``ollama pull <name>``).
+    """
+    log.info(f"switch_embedding_model — {model_name}")
+    try:
+        # Verify the model exists in Ollama
+        resp = requests.post(
+            f"{config.ollama_base_url}/api/embeddings",
+            json={"model": model_name, "prompt": "test"},
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            return f"Model '{model_name}' not found in Ollama. Pull it first: ollama pull {model_name}"
+
+        old_model = config.ollama_embed_model
+        llm_client.switch_embed_model(model_name)
+        chroma_store.reset_collection()
+        keyword_search.ensure_index()
+        indexer.run_index()
+        entity_store.rebuild()
+        keyword_search.ensure_index()
+
+        log.info(f"switch_embedding_model — switched {old_model} -> {model_name}")
+        return f"Switched embedding model: {old_model} → {model_name}. Vault re-indexed."
+    except Exception as e:
+        log_error(log, f"switch_embedding_model FAILED: {model_name}", exc=e)
+        return f"Error: {e}"
+
+
+@mcp.tool()
+def ask_agent(query: str) -> str:
+    """Route a query to the best tool automatically using an LLM agent.
+
+    The agent decides whether to use search_notes, summarize_topic,
+    search_entities, related_notes, read_note, or ask_vault based on
+    the user's intent. Tool results are returned directly.
+    """
+    log.info(f"ask_agent — {query}")
+    try:
+        result = pipelines.route_query(query)
+        log.info(f"ask_agent — done, {len(result)} chars")
+        return result
+    except Exception as e:
+        log_error(log, "ask_agent FAILED", exc=e, query=query)
+        return f"Error: {e}"
+
+
+@mcp.tool()
+def ask_vault(
+    question: str,
+    top_k: int = 3,
+    use_graph: bool = False,
+    graph_depth: int = 1,
+    use_entities: bool = False,
+    entity_types: list[str] | None = None,
+    keyword_weight: float = 0.0,
+    expand_query: bool = False,
+) -> str:
     """Ask a question about your Obsidian vault. Searches relevant notes and uses LLM to answer.
+
+    Uses the multi-strategy retrieval pipeline combining semantic search,
+    entity lookup, and wiki-link graph traversal.
 
     Args:
         question: the question to answer.
         top_k: number of top notes to retrieve.
         use_graph: if True, expand results by following wiki-links to find connected notes.
         graph_depth: max hops for graph traversal (default 1).
+        use_entities: if True, also search the entity index for matching entities.
+        entity_types: optional list of entity types to filter by (e.g. ``["Person"]``).
+        keyword_weight: blend ratio for BM25 keyword search (0.0 = pure semantic, 1.0 = pure keyword).
+        expand_query: if True, use the LLM to generate alternative query phrasings for broader search.
     """
-    log.info(f"ask_vault — {question}")
+    log.info(
+        "ask_vault — question=%s, top_k=%s, use_graph=%s, graph_depth=%s, use_entities=%s, entity_types=%s, keyword_weight=%s, expand_query=%s",
+        question, top_k, use_graph, graph_depth, use_entities, entity_types, keyword_weight, expand_query,
+    )
     try:
-        answer = pipelines.query(question, top_k=top_k, use_graph=use_graph, graph_depth=graph_depth)
+        answer = pipelines.query(
+            ask=question, top_k=top_k,
+            use_graph=use_graph, graph_depth=graph_depth,
+            use_entities=use_entities, entity_types=entity_types,
+            keyword_weight=keyword_weight, expand_query=expand_query,
+        )
         log.info(f"ask_vault — done, {len(answer)} chars")
         return answer
     except Exception as e:
@@ -679,12 +930,79 @@ def ask_vault(question: str, top_k: int = 3, use_graph: bool = False, graph_dept
 
 
 @mcp.tool()
+def retrieve_notes(
+    query: str,
+    top_k: int = 5,
+    use_graph: bool = False,
+    graph_depth: int = 1,
+    graph_weight: float = 0.2,
+    use_entities: bool = False,
+    entity_types: list[str] | None = None,
+    keyword_weight: float = 0.0,
+    min_similarity: float | None = None,
+    expand_query: bool = False,
+) -> list[dict]:
+    """Multi-strategy retrieval pipeline combining semantic search, entity lookup,
+    and wiki-link graph traversal into a single unified result set.
+
+    Returns note-level results (not chunks), each tagged with which strategy
+    found it (``matched_by`` field) and a blended similarity score.
+
+    Args:
+        query: the search query or topic.
+        top_k: max notes to return (default 5).
+        use_graph: if True, expand via wiki-link graph traversal.
+        graph_depth: max BFS hops when use_graph is True (default 1).
+        graph_weight: weight for graph proximity boost, 0.0-1.0 (default 0.2).
+        use_entities: if True, search the entity index for matching entities.
+        entity_types: optional list of entity types to filter by (e.g. ``["Person"]``).
+        keyword_weight: BM25 keyword blend, 0.0-1.0 (0.0 = pure semantic, 1.0 = pure keyword).
+        min_similarity: minimum similarity score threshold (0-1). Results below are filtered out.
+        expand_query: if True, use LLM to expand the query with synonyms for broader search.
+
+    Returns:
+        A list of dicts, each with:
+        - ``path`` — vault-relative note path
+        - ``title`` — note title (basename without extension)
+        - ``content`` — full note content (truncated to context budget)
+        - ``similarity_score`` — 0-to-1 blended score (higher = more relevant)
+        - ``matched_by`` — list of strategies that found this note (e.g. ``["semantic", "entity"]``)
+    """
+    log.info(
+        "retrieve_notes — query=%s, top_k=%s, use_graph=%s, graph_depth=%s, graph_weight=%s, use_entities=%s, entity_types=%s, keyword_weight=%s, min_similarity=%s, expand_query=%s",
+        query, top_k, use_graph, graph_depth, graph_weight, use_entities, entity_types, keyword_weight, min_similarity, expand_query,
+    )
+    try:
+        result = pipelines.retrieve(
+            query=query, top_k=top_k,
+            use_graph=use_graph, graph_depth=graph_depth, graph_weight=graph_weight,
+            use_entities=use_entities, entity_types=entity_types,
+            keyword_weight=keyword_weight, min_similarity=min_similarity,
+            expand_query=expand_query,
+        )
+        notes = result["notes"] if result else []
+        log.info("retrieve_notes — %s notes returned", len(notes))
+        return notes
+    except Exception as e:
+        log_error(log, "retrieve_notes FAILED", exc=e, query=query)
+        return []
+
+
+@mcp.tool()
 def tag_notes(query: str, top_k: int = 5) -> str:
-    """Search notes matching a query and auto-suggest tags using LLM."""
-    log.info(f"tag_notes — {query}")
+    """Search notes matching a query and auto-suggest tags using LLM.
+
+    Args:
+        query: search query to find relevant notes.
+        top_k: number of notes to process (default 5).
+
+    Returns:
+        Confirmation message with the tag map.
+    """
+    log.info(f"tag_notes — query={query!r}, top_k={top_k}")
     try:
         result = pipelines.tag_notes(query, top_k=top_k)
-        log.info("tag_notes — done")
+        log.info(f"tag_notes — done")
         return result
     except Exception as e:
         log_error(log, "tag_notes FAILED", exc=e, query=query)
@@ -692,7 +1010,56 @@ def tag_notes(query: str, top_k: int = 5) -> str:
 
 
 @mcp.tool()
-def get_subject(subject: str, top_k: int = 10, keyword_weight: float = 0.3) -> list[dict]:
+def summarize_topic(
+    topic: str,
+    top_k: int = 5,
+    use_graph: bool = True,
+    graph_depth: int = 1,
+    graph_weight: float = 0.2,
+    use_entities: bool = True,
+    entity_types: list[str] | None = None,
+    keyword_weight: float = 0.0,
+    expand_query: bool = False,
+) -> str:
+    """Search all notes related to a topic and return an LLM-generated consolidated summary.
+
+    Uses the multi-strategy retrieval pipeline combining semantic search,
+    entity lookup, and wiki-link graph traversal.
+
+    Args:
+        topic: the topic or subject to summarize.
+        top_k: number of notes to retrieve for context (default 5).
+        use_graph: if True, expand results via wiki-link graph traversal (default True).
+        graph_depth: max hops for graph traversal (default 1).
+        graph_weight: weight for graph proximity boost, 0.0-1.0 (default 0.2).
+        use_entities: if True, also search the entity index (default True).
+        entity_types: optional list of entity types to filter by (e.g. ``["Person"]``).
+        keyword_weight: BM25 keyword blend, 0.0-1.0 (0.0 = pure semantic, 1.0 = pure keyword).
+        expand_query: if True, use LLM to expand the query with synonyms for broader search.
+
+    Returns:
+        An LLM-generated summary of the topic across related notes.
+    """
+    log.info(
+        "summarize_topic — topic=%s, top_k=%s, use_graph=%s, graph_depth=%s, graph_weight=%s, use_entities=%s, entity_types=%s, keyword_weight=%s, expand_query=%s",
+        topic, top_k, use_graph, graph_depth, graph_weight, use_entities, entity_types, keyword_weight, expand_query,
+    )
+    try:
+        result = pipelines.summarize_topic(
+            topic=topic, top_k=top_k,
+            use_graph=use_graph, graph_depth=graph_depth, graph_weight=graph_weight,
+            use_entities=use_entities, entity_types=entity_types,
+            keyword_weight=keyword_weight, expand_query=expand_query,
+        )
+        log.info(f"summarize_topic — done, {len(result)} chars")
+        return result
+    except Exception as e:
+        log_error(log, "summarize_topic FAILED", exc=e, topic=topic)
+        return f"Error: {e}"
+
+
+@mcp.tool()
+def get_subject(subject: str, top_k: int = 10, keyword_weight: float = 0.3, group_by_note: bool = False) -> list[dict]:
     """Get notes related to a free-form subject.
 
     Uses LLM to expand the subject with related terms, then performs hybrid
@@ -702,13 +1069,14 @@ def get_subject(subject: str, top_k: int = 10, keyword_weight: float = 0.3) -> l
         subject: the subject or topic to search for.
         top_k: max results to return.
         keyword_weight: blend ratio for BM25 keyword search (0.0 = pure semantic, 1.0 = pure keyword).
+        group_by_note: if True, collapse chunk-level results into note-level (default False).
 
     Returns:
         List of dicts with path, title, similarity_score, snippet.
+        When ``group_by_note=True``, also includes ``chunk_count``.
     """
-    log.info(f"get_subject — subject={subject}, top_k={top_k}, keyword_weight={keyword_weight}")
+    log.info(f"get_subject — subject={subject}, top_k={top_k}, keyword_weight={keyword_weight}, group_by_note={group_by_note}")
     try:
-        # Expand the subject using LLM
         expanded = _expand_query(subject)
         queries = [subject] + expanded
         log.info(f"get_subject — expanded to: {queries}")
@@ -718,7 +1086,11 @@ def get_subject(subject: str, top_k: int = 10, keyword_weight: float = 0.3) -> l
             n=top_k,
             keyword_weight=keyword_weight,
         )
-        log.info("get_subject — %s passages returned", len(passages))
+
+        if group_by_note and passages:
+            passages = _group_by_note(passages, top_k)
+
+        log.info("get_subject — %s results returned", len(passages))
         return passages
     except Exception as e:
         log_error(log, "get_subject FAILED", exc=e, subject=subject)
@@ -1122,21 +1494,24 @@ def ensure_todo_file() -> str:
 
 
 @mcp.tool()
-def get_todos(project: str = "", status: str = "") -> list[dict]:
+def get_todos(project: str = "", status: str = "", overdue: bool = False, blocked: bool = False, search: str = "") -> list[dict]:
     """List todos from todos.md, optionally filtered by project and/or status.
 
     Args:
         project: filter by project name (case-sensitive). Empty string = all projects.
         status: ``"pending"`` or ``"completed"``. Empty string = all statuses.
+        overdue: if True, only return pending todos past their due date.
+        blocked: if True, only return todos with "blocked"/"blocking" in the task text or a "blocked" tag.
+        search: free-text search against task description, tags, and project name (case-insensitive).
 
     Returns:
         List of todo dicts, each with id, task, status, due, priority, tags, project.
     """
-    log.info(f"get_todos — project={project!r}, status={status!r}")
+    log.info(f"get_todos — project={project!r}, status={status!r}, overdue={overdue}, blocked={blocked}, search={search!r}")
     try:
         proj = project if project else None
         st = status if status else None
-        todos = td_get(project=proj, status=st)
+        todos = td_get(project=proj, status=st, overdue=overdue, blocked=blocked, search=search)
         log.info(f"get_todos — {len(todos)} results")
         return todos
     except Exception as e:
@@ -1269,6 +1644,24 @@ def sync_todos() -> dict:
         return result
     except Exception as e:
         log_error(log, "sync_todos FAILED", exc=e)
+        return {"error": str(e)}
+
+
+@mcp.tool()
+def get_todo_stats() -> dict:
+    """Return aggregated statistics about all todos in the vault.
+
+    Returns:
+        Dict with total, completed, pending, overdue counts, per-project breakdown,
+        per-priority breakdown, due-date stats, and tag frequency.
+    """
+    log.info("get_todo_stats")
+    try:
+        result = td_stats()
+        log.info(f"get_todo_stats — {result['total']} todos")
+        return result
+    except Exception as e:
+        log_error(log, "get_todo_stats FAILED", exc=e)
         return {"error": str(e)}
 
 

@@ -9,19 +9,22 @@ Agent (Goose / Claude / Cursor)
         │
         ▼
    mcp_server.py ──── FastMCP (stdio)
-   ├── search_notes(query)
-   ├── read_note(path)
-   ├── write_note(path, content)
-   ├── list_all_notes()
-   ├── list_folder(folder_path)     ← non-recursive
-   ├── list_folder_deep(folder_path) ← recursive
-   ├── add_tags(path, tags)
-   ├── create_backlink(a, b)
-   ├── read_note_by_title(title, folder_path)
-   ├── get_index_stats()
-   ├── sync_index()
-   ├── ask_vault(question)      ← LLM-powered
-   └── tag_notes(query)         ← LLM-powered
+    ├── search_notes(query)
+    ├── read_note(path)
+    ├── write_note(path, content)
+    ├── list_all_notes()
+    ├── list_folder(folder_path)         ← non-recursive
+    ├── list_folder_deep(folder_path)    ← recursive
+    ├── add_tags(path, tags)
+    ├── create_backlink(a, b)
+    ├── read_note_by_title(title, folder_path)
+    ├── get_index_stats()
+    ├── sync_index()
+    ├── ask_vault(question)              ← LLM-powered
+    ├── tag_notes(query)                 ← LLM-powered
+    ├── search_entities(query)           ← entity-aware
+    ├── get_note_entities(path)
+    └── get_entity_types()
         │
         ├──────────────────┐
         ▼                  ▼
@@ -74,13 +77,23 @@ Local ChromaDB persistence layer. Provides:
 
 Document IDs use the format `{path}::chunk_{N}` so multiple chunks per note can coexist.
 
+### entity_store.py
+Persistent inverted index mapping entity names to note paths. Entities are extracted per-note during indexing via LLM (Qwen3:8b) and stored as:
+
+- **`data/entities.json`** — entity index (JSON), rebuilt from ChromaDB metadata on `sync_index`
+- **`entities_str` metadata** — per-chunk string like `,Technology:Python,Project:Obsidian,` for ChromaDB `$contains` queries
+- **Graph nodes** — entity nodes (`__entity:{type}:{name}`) in `GraphStore` for cross-referencing
+
+Provides: `add`, `search`, `search_by_type`, `get_note_entities`, `rebuild`, `stats`, `entity_types`.
+
 ### indexer.py
 One-shot indexing script and file watcher. Pipeline:
 1. Fetch all note paths from Obsidian
 2. For each note: get content, skip if under 20 words
 3. Delete old chunks from ChromaDB (for re-indexing)
 4. Split content into 500-word chunks (100-word overlap)
-5. Embed each chunk, store in ChromaDB with metadata
+5. Extract entities via LLM (cached per path per run)
+6. Embed each chunk, store in ChromaDB with metadata (including `entities_str`)
 
 Also provides:
 - `add_tags_to_note()` for YAML frontmatter manipulation
@@ -96,8 +109,11 @@ LLM-powered pipelines for querying and auto-tagging. Provides:
 
 Both pipelines use `truncate_to_budget()` to stay within context limits.
 
+### graph_store.py
+In-memory wiki-link graph built during indexing. Uses a dict-based adjacency list (`_adj: dict[str, set[str]]`), populated by extracting `[[wikilinks]]` from note content. Supports BFS traversal, broken link detection, community detection (label propagation), and graph export (DOT/JSON). Excludes `__entity:*` nodes from stats, orphan detection, and exports.
+
 ### mcp_server.py
-FastMCP server exposing 13 vault tools via stdio transport. Wraps `obsidian_client`, `chroma_store`, `llm_client`, `indexer`, and `pipelines` for agent access. Logs all tool calls to `mcp_calls.log`.
+FastMCP server exposing vault tools via stdio transport. Wraps `obsidian_client`, `chroma_store`, `llm_client`, `indexer`, `pipelines`, `entity_store`, and `graph_store` for agent access. Logs all tool calls to `mcp_calls.log`.
 
 ## Data Flow
 
@@ -107,35 +123,37 @@ FastMCP server exposing 13 vault tools via stdio transport. Wraps `obsidian_clie
 └──────────────────────────────┬───────────────────────────────┘
                                │ MCP (stdio)
                                ▼
-┌──────────────────────────────────────────────────────────────┐
-│                      mcp_server.py                           │
-│  search_notes │ read_note │ write_note │ ask_vault │ ...     │
-└────────┬─────────────────────────┬───────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                      mcp_server.py                               │
+│  search_notes │ read_note │ write_note │ ask_vault │ ...         │
+│  search_entities │ get_note_entities │ get_entity_types           │
+└────────┬─────────────────────────┬───────────────────────────────┘
          │                         │
          ▼                         ▼
-┌──────────────┐          ┌──────────────┐
-│  obsidian_   │          │  chroma_     │
-│  client.py   │          │  store.py    │
-└──────┬───────┘          └──────┬───────┘
-       │                         │
-       ▼                         ▼
-┌──────────────┐          ┌──────────────┐
-│  Obsidian    │          │  ChromaDB    │
-│  REST API    │          │  (local)     │
-└──────┬───────┘          └──────────────┘
-       │
-       ▼
-┌──────────────┐          ┌──────────────┐
-│  llm_client  │          │  pipelines   │
-│  └─ embed()  │          │  └─ query()  │
-│  └─ chat()   │          │  └─ tag()    │
-└──────┬───────┘          └──────────────┘
-       │
-       ▼
+┌──────────────┐          ┌──────────────────┐
+│  obsidian_   │          │  chroma_store    │
+│  client.py   │          │  + entity_store  │
+└──────┬───────┘          │  + graph_store   │
+       │                  └────────┬─────────┘
+       ▼                           │
+┌──────────────┐                   │
+│  Obsidian    │                   ▼
+│  REST API    │          ┌──────────────────┐
+└──────┬───────┘          │  ChromaDB        │
+       │                  │  entities.json   │
+       ▼                  │  graph (memory)  │
+┌──────────────┐          └──────────────────┘
+│  llm_client  │          ┌──────────────┐
+│  └─ embed()  │          │  pipelines   │
+│  └─ chat()   │          │  └─ query()  │
+└──────┬───────┘          │  └─ tag()    │
+       │                  │  └─ extract_ │
+       │                  │     entities()│
+       ▼                  └──────────────┘
 ┌──────────────┐
 │  Ollama      │
 │  ├─ nomic-embed-text (embeddings)
-│  └─ qwen3:8b (chat/LLM)
+│  └─ qwen3:8b (chat/LLM + entity extraction)
 └──────────────┘
 ```
 
@@ -156,7 +174,13 @@ Chunk 2: words 800-1199   (100-word overlap with chunk 1)
 
 ## LLM Integration
 
-Two modes of LLM usage:
+Three modes of LLM usage:
+
+### Entity Extraction (`extract_entities`)
+1. During indexing, each note's sanitized content is sent to Qwen3:8b with an extraction prompt
+2. LLM returns JSON entities: `[{"name": "...", "type": "...", "confidence": 0.0-1.0}]`
+3. Entities are stored in `entity_store` and written as `entities_str` metadata on every chunk
+4. Subsequent `sync_index` rebuilds the entity store from ChromaDB metadata (no LLM calls)
 
 ### Query Mode (`ask_vault`)
 1. Embed the user's question

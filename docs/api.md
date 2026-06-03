@@ -331,6 +331,90 @@ result = pipelines.tag_notes("machine learning")
 
 ---
 
+## entity_store.py
+
+Persistent entity inverted index. Data is stored in `data/entities.json` alongside the ChromaDB directory.
+
+### `EntityStore`
+
+```python
+from obsidian_ai.entity_store import EntityStore
+store = EntityStore()
+```
+
+### `add(name: str, type: str, confidence: float, path: str, chunk_idx: int, context: str) -> None`
+
+Add or update an entity mention. Deduplicates by casefolded name — subsequent mentions update confidence,
+type (upgraded to more specific type), aliases, and path list.
+
+```python
+store.add("Python", "Technology", 0.95, "Notes/lang.md", 0, "Python is a programming language...")
+```
+
+### `search(query: str, type: str = None, n: int = 10) -> list[dict]`
+
+Search entities by name prefix (case-insensitive). Optionally filter by type. Returns top-n records sorted by confidence.
+
+```python
+results = store.search("python", n=5)
+# [{"name": "Python", "canonical": "Python", "type": "Technology", "confidence": 0.95, ...}]
+```
+
+### `search_by_type(entity_type: str, n: int = 50) -> list[dict]`
+
+Return all entities of a given type, sorted by confidence descending.
+
+```python
+people = store.search_by_type("Person", n=10)
+```
+
+### `get_note_entities(path: str) -> list[dict]`
+
+Return all entities found in a specific note.
+
+```python
+entities = store.get_note_entities("Notes/lang.md")
+# [{"entity_name": "Python", "entity_type": "Technology", "confidence": 0.95}]
+```
+
+### `clear() -> None`
+
+Remove all records from the in-memory store.
+
+```python
+store.clear()
+```
+
+### `rebuild() -> None`
+
+Rebuild the entity index from ChromaDB metadata. Walks all chunks, parses `entities_str`, and repopulates the store.
+
+### `stats() -> dict`
+
+Return index statistics: total unique entities, entity count, and per-type breakdown.
+
+### `entity_types() -> set[str]`
+
+Return the set of entity type labels present in the index.
+
+### Module-level convenience functions
+
+```python
+from obsidian_ai import entity_store
+entity_store.add(name, type, confidence, path, chunk_idx, context)
+entity_store.search(query, type=None, n=10)
+entity_store.search_by_type(entity_type, n=50)
+entity_store.get_note_entities(path)
+entity_store.clear()
+entity_store.rebuild()
+entity_store.stats()
+entity_store.entity_types()
+```
+
+These wrap a global `EntityStore` singleton (`_store`). Import `entity_store` directly and call functions as if they were module methods.
+
+---
+
 ## mcp_server.py
 
 FastMCP server exposing 14 vault tools. Run with `python -m obsidian_ai.mcp_server`.

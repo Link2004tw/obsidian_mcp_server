@@ -101,6 +101,9 @@ All commands communicate with the MCP server via stdio — same code path as any
 | `sync_index` | — | Re-run the full indexer pipeline |
 | `ask_vault` | `question: str`, `top_k: int = 3` | Ask a question, get an LLM-powered answer from vault content |
 | `tag_notes` | `query: str`, `top_k: int = 5` | Auto-suggest tags for notes matching a query |
+| `search_entities` | `entity_name: str`, `entity_type: str?`, `n: int = 10`, `use_graph: bool = False` | Find notes mentioning an entity, with optional graph expansion |
+| `get_note_entities` | `path: str` | Return all entities found in a specific note |
+| `get_entity_types` | — | List all entity types present in the index |
 
 ### Development
 
@@ -127,7 +130,9 @@ obsidian-ai/
 │       ├── chroma_store.py        # ChromaDB vector storage
 │       ├── indexer.py             # Vault indexing pipeline + file watcher
 │       ├── pipelines.py           # Query & action pipelines (LLM-powered)
-│       └── mcp_server.py          # MCP server (12 tools)
+│       ├── entity_store.py        # Entity extraction and inverted index
+│       ├── graph_store.py         # Wiki-link graph storage and traversal
+│       └── mcp_server.py          # MCP server
 ├── cli.py                         # CLI wrapper (index, watch, search, tag, stats)
 ├── docs/                          # User documentation
 │   ├── setup.md

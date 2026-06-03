@@ -408,6 +408,56 @@ mcpServers:
 
 ---
 
+### `search_entities(entity_name, entity_type=..., n=10, use_graph=False)`
+
+Find notes containing a specific entity (person, project, technology, etc.). Supports type filtering and graph-based expansion for finding connected notes.
+
+**Parameters:**
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `entity_name` | `str` | *(required)* | Entity name to search for (case-insensitive) |
+| `entity_type` | `str` | `None` | Filter by entity type (Person, Project, Technology, etc.) |
+| `n` | `int` | `10` | Maximum number of results |
+| `use_graph` | `bool` | `False` | If True, expand results by following wiki-links to find connected notes |
+
+**Returns:** `list[dict]` — results with path, title, entity_name, entity_type, snippet, confidence.
+
+```json
+[
+  {"path": "Notes/python.md", "title": "python", "entity_name": "Python", "entity_type": "Technology", "snippet": "Python is a...", "confidence": 0.95}
+]
+```
+
+**How it works:**
+1. Searches the entity inverted index (`data/entities.json`) for matching entities by prefix
+2. If few results, falls back to ChromaDB `$contains` on `entities_str` metadata
+3. If `use_graph=True`, performs 1-hop BFS on each result's wiki-link graph
+
+---
+
+### `get_note_entities(path)`
+
+Return all entities found in a specific note during indexing.
+
+**Parameters:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `path` | `str` | Vault-relative path (e.g., `Notes/topic.md`) |
+
+**Returns:** `list[dict]` — entity records with entity_name, entity_type, confidence.
+
+---
+
+### `get_entity_types()`
+
+List all entity type labels present in the index (e.g., Person, Technology, Project).
+
+**Parameters:** None
+
+**Returns:** `list[str]` — unique entity types sorted alphabetically.
+
+---
+
 ## Dependencies
 
 - `fastmcp` — MCP server framework

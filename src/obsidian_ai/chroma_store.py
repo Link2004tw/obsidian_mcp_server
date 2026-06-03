@@ -1,6 +1,9 @@
 import chromadb
 
 from . import config
+from .logger import get_logger
+
+log = get_logger("obsidian_ai.chroma_store")
 
 _client = None
 _collection = None
@@ -12,6 +15,13 @@ def _ensure_init():
     if _collection is not None:
         return
     init()
+
+
+def reset_collection() -> None:
+    """Delete all data from the collection and re-create it."""
+    _ensure_init()
+    _collection.delete(ids=_collection.get()["ids"])
+    log.info("ChromaDB collection reset")
 
 
 def init(path: str | None = None) -> None:
@@ -97,6 +107,59 @@ def get_metadata_by_ids(ids: list[str]) -> tuple[list[dict], list[str | None]]:
     metadatas: list[dict] = all_data["metadatas"] if all_data["metadatas"] else []  # type: ignore[assignment]
     docs: list[str | None] = all_data["documents"] if all_data["documents"] else []  # type: ignore[assignment]
     return metadatas, docs
+
+
+def find_duplicate_notes(threshold: float = 0.9, n: int = 20) -> list[dict]:
+    """Find near-duplicate notes via embedding similarity.
+
+    Compares the first chunk embedding of each note against all others.
+    Returns list of ``{"path_a": str, "path_b": str, "similarity": float}``
+    sorted by similarity descending, limited to ``n`` pairs.
+    """
+    _ensure_init()
+    all_data = _collection.get(include=["embeddings", "metadatas"])
+    ids = all_data["ids"]
+    embeddings = all_data["embeddings"]
+    metadatas = all_data["metadatas"]
+
+    if not ids or not embeddings:
+        return []
+
+    # First chunk embedding per note
+    note_emb: dict[str, list[float]] = {}
+    for meta, emb in zip(metadatas, embeddings):
+        path = meta["path"]
+        if path not in note_emb:
+            note_emb[path] = emb
+
+    note_paths = list(note_emb.keys())
+
+    pairs: list[tuple[str, str, float]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for path in note_paths:
+        emb = note_emb[path]
+        results = _collection.query(
+            query_embeddings=[emb],
+            n_results=min(n * 3, len(note_paths)),
+        )
+        for j, doc_id in enumerate(results["ids"][0]):
+            other_path = doc_id.split("::")[0]
+            if other_path == path:
+                continue
+            distance = results["distances"][0][j]
+            similarity = 1.0 - distance
+            if similarity >= threshold:
+                pair = tuple(sorted([path, other_path]))
+                if pair not in seen:
+                    seen.add(pair)
+                    pairs.append((pair[0], pair[1], similarity))
+
+    pairs.sort(key=lambda x: x[2], reverse=True)
+    return [
+        {"path_a": p[0], "path_b": p[1], "similarity": round(p[2], 4)}
+        for p in pairs[:n]
+    ]
 
 
 def get_index_stats() -> dict:

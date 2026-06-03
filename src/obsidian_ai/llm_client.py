@@ -5,7 +5,7 @@ import requests
 
 from . import config
 
-REQUEST_TIMEOUT = 120
+REQUEST_TIMEOUT = 300
 EMBED_TIMEOUT = 180
 MAX_RETRIES = 3
 INITIAL_BACKOFF = 2
@@ -56,6 +56,16 @@ def embed(text: str) -> list[float]:
 def clear_embed_cache() -> None:
     """Clear the LRU cache for ``embed()``."""
     embed.cache_clear()
+
+
+def switch_embed_model(model_name: str) -> None:
+    """Switch the embedding model at runtime.
+
+    Updates ``config.ollama_embed_model`` and clears the embed cache
+    so subsequent ``embed()`` calls use the new model.
+    """
+    config.ollama_embed_model = model_name
+    clear_embed_cache()
 
 
 def embed_cache_info() -> dict:
