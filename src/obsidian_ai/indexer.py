@@ -346,7 +346,7 @@ def _sanitize(text: str) -> str:
     text = re.sub(r'https?://\S+', '', text)
     text = re.sub(r'\(\s*\)', '', text)
     text = text.encode("utf-8", errors="replace").decode("utf-8")
-    return re.sub(r'\s+', ' ', text).strip()
+    return re.sub(r'[^\S\r\n]+', ' ', text).strip()
 
 
 def chunk_text(text: str, size: int = config.chunk_size, overlap: int = config.chunk_overlap) -> list[str]:
