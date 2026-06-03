@@ -50,3 +50,8 @@ graphify-out/
 
 # Obsidian plugin (if copied locally)
 .obsidian/
+
+# Mypy / Ruff caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/

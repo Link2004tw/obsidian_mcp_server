@@ -1,15 +1,15 @@
 {
   "edges": {
-    "Me/Courses/Cyber security courses.md": [],
-    "Me/Courses/Data analyst courses.md": [],
-    "Me/Death.md": [],
     "Me/Notes/Ba2olak eh.md": [
       "Me/Death.md"
     ],
+    "Me/Death.md": [],
     "Me/To-do list.md": [
       "Me/Courses/Cyber security courses.md",
       "Me/Courses/Data analyst courses.md"
     ],
+    "Me/Courses/Data analyst courses.md": [],
+    "Me/Courses/Cyber security courses.md": [],
     "copilot/copilot-conversations/Growth_Journey_Reflection@20260324_192850.md": [
       "Me/My growth Journey.md"
     ],
@@ -35,27 +35,10 @@
     ],
     "copilot/copilot-conversations/Yearning_for_Humanity@20260326_191201.md": [
       "Me/Quotes/Music Quotes.md"
-    ],
-    "management/Lina/Quotes/Favourite phares and expressions.md": []
+    ]
   },
   "title_map": {
-    "all about thinking": "Courses/Data science Course/All about thinking.md",
-    "core analytical skills": "Courses/Data science Course/Core analytical Skills.md",
-    "data ecosystems": "Courses/Data science Course/Data Ecosystems.md",
-    "data analysis": "Courses/Data science Course/Data analysis.md",
-    "how data informs better decisions": "Courses/Data science Course/How data informs better Decisions.md",
-    "smart contracts platforms": "Courses/contracts Course/Smart Contracts Platforms.md",
-    "smart contracts": "Courses/contracts Course/Smart Contracts.md",
     "solar farm contract": "Courses/contracts Course/Solidity/Solar Farm Contract.md",
-    "solidity intro": "Courses/contracts Course/Solidity/Solidity Intro.md",
-    "solidity notes": "Courses/contracts Course/Solidity/Solidity notes.md",
-    "secret": "Courses/contracts Course/Solidity/secret.md",
-    "setup": "Courses/contracts Course/documentation/Setup.md",
-    "untitled": "Courses/contracts Course/documentation/Untitled.md",
-    "ai prompts": "Courses/contracts Course/reports/AI Prompts.md",
-    "ai prompts formal": "Courses/contracts Course/reports/AI prompts formal.md",
-    "report 1": "Courses/contracts Course/reports/Report 1.md",
-    "sequence diagrams": "Courses/contracts Course/reports/sequence diagrams.md",
     "cyber security courses": "Me/Courses/Cyber security courses.md",
     "data analyst courses": "Me/Courses/Data analyst courses.md",
     "road map for ai and cyber security": "Me/Courses/Road map for ai and cyber security.md",
@@ -129,6 +112,7 @@
     "to the girl who asked": "Me/Poems/To the girl who asked.md",
     "untitled 1": "Me/Poems/Untitled 1.md",
     "untitled 2": "Me/Poems/Untitled 2.md",
+    "untitled": "Me/Poems/Untitled.md",
     "valentine": "Me/Poems/Valentine.md",
     "anime quotes": "Me/Quotes/Anime Quotes.md",
     "gaming quotes": "Me/Quotes/Gaming Quotes.md",

@@ -73,10 +73,7 @@ def _get_note_list_cache_path() -> str:
     global _NOTE_LIST_CACHE_PATH
     if _NOTE_LIST_CACHE_PATH is not None:
         return _NOTE_LIST_CACHE_PATH
-    cache_dir = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        os.path.dirname(config.chroma_path) if os.path.sep in config.chroma_path else "data",
-    )
+    cache_dir = config.data_dir
     os.makedirs(cache_dir, exist_ok=True)
     _NOTE_LIST_CACHE_PATH = os.path.join(cache_dir, "note_paths.json")
     return _NOTE_LIST_CACHE_PATH

@@ -12,7 +12,11 @@ ollama_base_url: str        # OLLAMA_BASE_URL, default "http://localhost:11434"
 ollama_embed_model: str     # OLLAMA_EMBED_MODEL, default "nomic-embed-text"
 ollama_chat_model: str      # OLLAMA_CHAT_MODEL, default "qwen3:8b"
 chroma_path: str            # CHROMA_PATH, default "data/chroma_db"
+vault_path: str | None      # VAULT_PATH (required for file watcher)
+data_dir: str               # Data storage root, default "data"
 EXCLUDE_PATTERNS: list[str] # Hardcoded exclusion patterns
+chunk_size: int             # Words per chunk, default 500
+chunk_overlap: int          # Word overlap between chunks, default 100
 ```
 
 ---
@@ -35,7 +39,6 @@ Returns entries directly inside a specific folder (non-recursive — does not de
 Includes both `.md` files and subdirectory names (with trailing `/`).
 
 ```python
-from obsidian_ai import obsidian_client
 notes = obsidian_client.list_folder("Projects")
 # ["Projects/active.md", "Projects/archive/", "Projects/notes.md"]
 ```
@@ -47,9 +50,17 @@ Raises the same HTTP errors as `get_note()` if the folder doesn't exist.
 Returns a list of `.md` file paths within a specific folder (recursive — traverses all subdirectories).
 
 ```python
-from obsidian_ai import obsidian_client
 notes = obsidian_client.list_folder_deep("Projects")
 # ["Projects/active.md", "Projects/archive/old.md", ...]
+```
+
+### `list_dir(path: str) -> list[dict]`
+
+Low-level REST API call that returns raw directory entries (with `name`, `type`, `uri` fields). Used internally by `list_folder` and `list_all_notes`.
+
+```python
+entries = obsidian_client.list_dir("Projects")
+# [{"name": "active.md", "type": "file", "uri": "..."}, ...]
 ```
 
 ### `get_note(path: str) -> str`
@@ -59,8 +70,9 @@ Fetches the full content of a note by its vault path. Auto-appends `.md` extensi
 ```python
 content = obsidian_client.get_note("Courses/notes/Topic.md")
 # "# Topic\n\nThis is the note content..."
-# Also works: get_note("Courses/notes/Topic")
 ```
+
+**Data directory:** Cache files (`note_paths.json`, `title_to_path.json`) are stored in `config.data_dir`.
 
 **Raises:** `requests.HTTPError` if the note doesn't exist or the API fails.
 
@@ -88,26 +100,28 @@ MAX_CONTEXT_WORDS = 3000  # Max words for LLM context truncation
 
 ### Retry Behavior
 
-All Ollama requests use `_request_with_retry()` — retries up to 3 times with exponential backoff (2s → 4s → 8s) on:
+All Ollama requests use `_request_with_retry()` — retries up to 3 times with exponential backoff (`2s → 4s → 8s`) on:
 - `ReadTimeout` — server took too long to respond
 - `ConnectionError` — server unreachable
 - `HTTPError` with status 429 (rate limit), 502 (bad gateway), 503 (service unavailable)
 
 ### `embed(text: str) -> list[float]`
 
-Converts text to a 768-dimensional embedding vector via Ollama.
+Converts text to an embedding vector via Ollama. Length depends on the model (768 for `nomic-embed-text`).
 
 ```python
 from obsidian_ai import llm_client
 vector = llm_client.embed("What is machine learning?")
-# [0.665, 0.270, -4.427, ...] (768 floats)
+# [0.665, 0.270, -4.427, ...]
 ```
 
-**Raises:** `requests.HTTPError` if Ollama fails after all retries (e.g., model not loaded, input too large).
+**Caching:** Embeddings are cached in memory by text hash to avoid redundant API calls.
+
+**Raises:** `requests.HTTPError` if Ollama fails after all retries.
 
 ### `chat(messages: list[dict], model: str = None, think: bool = True) -> str`
 
-Send a chat completion request to Ollama and return the response text. Uses same retry logic as `embed()` (3 attempts, exponential backoff).
+Send a chat completion request to Ollama and return the response text. Uses same retry logic as `embed()`.
 
 ```python
 messages = [
@@ -125,8 +139,6 @@ response = llm_client.chat(messages)
 | `model` | `str` | `config.ollama_chat_model` | Model to use |
 | `think` | `bool` | `True` | Enable thinking mode (set `False` for speed) |
 
-**Raises:** `requests.HTTPError` if Ollama fails after all retries.
-
 ### `truncate_to_budget(text: str, max_words: int = MAX_CONTEXT_WORDS) -> str`
 
 Truncate text to a word budget, appending `[truncated]` if cut.
@@ -137,16 +149,36 @@ short = llm_client.truncate_to_budget(long_text, max_words=1000)
 # "word word ... (1000 words) [truncated]"
 ```
 
+### `clear_embed_cache() -> None`
+
+Clear the in-memory embedding cache.
+
+### `embed_cache_info() -> dict`
+
+Return stats about the embedding cache (`size`, `hits`, `misses`).
+
+### `switch_embed_model(model_name: str) -> None`
+
+Switch the embedding model at runtime. Clears the embedding cache and updates `config.ollama_embed_model`. Does NOT verify the model exists in Ollama — caller should verify first.
+
 ---
 
 ## chroma_store.py
 
-### `upsert(path: str, chunk_idx: int, embedding: list[float], metadata: dict) -> None`
+### `init(path: str = None) -> None`
+
+Initializes or re-initializes the ChromaDB persistent client and the `"notes"` collection. Defaults to `config.chroma_path` if no path is given.
+
+### `reset_collection() -> None`
+
+Deletes all documents from the ChromaDB collection. Used before re-indexing after an embedding model switch.
+
+### `upsert(path: str, chunk_idx: int, embedding: list[float], metadata: dict, document: str = None) -> None`
 
 Inserts or updates a single chunk's embedding in ChromaDB.
 
 - **Document ID:** `{path}::chunk_{chunk_idx}`
-- **Metadata fields:** `path`, `title`, `chunk`, `word_count`
+- **Metadata fields:** `path`, `title`, `chunk`, `word_count`, `heading`, `tags_str`, `links_str`, `entities_str`, `summary`, `mtime`, `fm_*`
 
 ```python
 chroma_store.upsert(
@@ -155,6 +187,14 @@ chroma_store.upsert(
     embedding=[0.665, 0.270, ...],
     metadata={"path": "Courses/notes/Topic.md", "title": "Topic", "chunk": 0, "word_count": 500}
 )
+```
+
+### `delete_by_path(path: str) -> None`
+
+Deletes all chunks belonging to a given note path. Used before re-indexing to wipe stale chunks.
+
+```python
+chroma_store.delete_by_path("Courses/notes/Topic.md")
 ```
 
 ### `get_by_path(path: str) -> list[dict]`
@@ -166,12 +206,13 @@ entries = chroma_store.get_by_path("Courses/notes/Topic.md")
 # [{"path": "Courses/notes/Topic.md", "title": "Topic", "chunk": 0, "word_count": 500}]
 ```
 
-### `delete_by_path(path: str) -> None`
+### `get_by_title(title: str) -> list[dict]`
 
-Deletes all chunks belonging to a given note path. Used before re-indexing to wipe stale chunks.
+Looks up notes by their title (filename without `.md` extension). Returns deduplicated metadata dicts (one per unique path).
 
 ```python
-chroma_store.delete_by_path("Courses/notes/Topic.md")
+entries = chroma_store.get_by_title("README")
+# [{"path": "README.md", "title": "README", ...}]
 ```
 
 ### `count() -> int`
@@ -183,43 +224,66 @@ total = chroma_store.count()
 # 157
 ```
 
-### `dedup_paths(results: list[dict]) -> list[tuple[str, str]]`
+### `get_all_documents() -> tuple[list[str], list[str | None], list[dict]]`
 
-Deduplicates query results by note path. Returns `[(path, title), ...]`.
+Returns a 3-tuple of `(ids, documents, metadatas)` for every entry in the index. Used by `entity_store.rebuild()`.
 
-```python
-pairs = chroma_store.dedup_paths(results)
-# [("Courses/notes/Topic.md", "Topic"), ("Journal/2024-01-01.md", "2024-01-01")]
-```
+### `get_metadata_by_ids(ids: list[str]) -> tuple[list[dict], list[str | None]]`
 
-### `query(embedding: list[float], n: int = 5) -> list[dict]`
+Fetches metadata and documents for specific ChromaDB document IDs.
+
+### `query(embedding: list[float], n: int = 5, where: dict = None) -> list[dict]`
 
 Semantic search. Returns the top-k closest chunks.
 
 ```python
 results = chroma_store.query(embedding=[0.665, 0.270, ...], n=5)
 # [
-#   {"id": "path::chunk_0", "metadata": {...}, "distance": 0.42},
-#   {"id": "path::chunk_1", "metadata": {...}, "distance": 0.51},
+#   {"id": "path::chunk_0", "metadata": {...}, "distance": 0.42, "document": "..."},
 #   ...
 # ]
 ```
 
 Each result contains:
 - `id` — ChromaDB document ID (`{path}::chunk_{N}`)
-- `metadata` — dict with `path`, `title`, `chunk`, `word_count`
+- `metadata` — dict with `path`, `title`, `chunk`, `word_count`, `summary`, `entities_str`, etc.
 - `distance` — cosine distance (lower = more similar)
+- `document` — the chunk text content
+
+### `find_duplicate_notes(threshold: float = 0.9, n: int = 20) -> list[dict]`
+
+Find near-duplicate notes by comparing first-chunk embeddings via cosine distance. Returns up to `n` pairs with similarity scores, sorted descending.
+
+```python
+dupes = chroma_store.find_duplicate_notes(threshold=0.85)
+# [{"path_a": "Notes/A.md", "path_b": "Notes/B.md", "similarity": 0.92}, ...]
+```
+
+### `get_index_stats() -> dict`
+
+Returns index statistics (`total_chunks`, `unique_notes`).
+
+### `search_by_tags(tags: list[str], n: int = 20) -> list[dict]`
+
+Find notes containing ALL specified tags (uses `$contains` on `tags_str` metadata). Returns deduplicated results with snippets.
+
+```python
+results = chroma_store.search_by_tags(["python", "ml"], n=5)
+# [{"path": "Notes/topic.md", "title": "topic", "tags": ["python", "ml"], "snippet": "..."}]
+```
 
 ---
 
 ## indexer.py
 
-### Constants
+### Constants & Flags
 
 ```python
-SKIP_MIN_TOKENS = 20    # Notes under this word count are skipped
-CHUNK_SIZE = 500         # Words per chunk
-CHUNK_OVERLAP = 100      # Word overlap between chunks
+SKIP_MIN_TOKENS = 20      # Notes under this word count are skipped
+CHUNK_SIZE = 500           # Words per chunk
+CHUNK_OVERLAP = 100        # Word overlap between chunks
+SKIP_ENTITIES = False      # Set True to skip entity extraction
+SKIP_SUMMARIES = False     # Set True to skip summary generation
 ```
 
 ### `chunk_text(text: str, size: int = 500, overlap: int = 100) -> list[str]`
@@ -227,27 +291,35 @@ CHUNK_OVERLAP = 100      # Word overlap between chunks
 Splits text into overlapping word-based chunks.
 
 ```python
-from indexer import chunk_text
+from obsidian_ai.indexer import chunk_text
 chunks = chunk_text("word " * 1200, size=500, overlap=100)
 # ["word word ... (500 words)", "word word ... (500 words)", "word word ... (300 words)"]
 ```
 
+### `split_by_headings(text: str) -> list[tuple[str, str]]`
+
+Split note content by markdown headings. Returns `[(heading_text, section_content), ...]`. The first section (before any heading) has an empty string heading.
+
+### `chunk_text_heading_aware(text: str, size: int = 500, overlap: int = 100) -> list[tuple[str, str]]`
+
+Heading-aware chunking. Splits by headings first, then chunks large sections. Returns `[(heading, chunk_text), ...]`.
+
 ### `run_index() -> None`
 
-Main indexing pipeline. Fetches all notes, chunks them, embeds, and stores in ChromaDB. Prints summary stats and logs errors to `indexer.log`.
+Main indexing pipeline. Fetches all notes, chunks them, extracts entities, generates summaries, embeds, and stores in ChromaDB. Prints summary stats and logs errors to `indexer.log`.
 
 ```python
-from indexer import run_index
+from obsidian_ai.indexer import run_index
 run_index()
 # Done. Indexed: 42, Skipped: 5, Failed: 0
 ```
 
-### `_index_note(path: str) -> bool`
+### `_index_note(path: str, content: str = None) -> bool`
 
-Index a single note. Used by the file watcher for incremental updates.
+Index a single note. Used by the file watcher for incremental updates. Extracts entities and generates summary if not skipped.
 
 ```python
-from indexer import _index_note
+from obsidian_ai.indexer import _index_note
 _index_note("Notes/topic.md")
 # True if successful
 ```
@@ -257,7 +329,7 @@ _index_note("Notes/topic.md")
 Delete a note from the index. Used by the file watcher on file deletion.
 
 ```python
-from indexer import _delete_note
+from obsidian_ai.indexer import _delete_note
 _delete_note("Notes/topic.md")
 # True if successful
 ```
@@ -267,7 +339,7 @@ _delete_note("Notes/topic.md")
 Start the file watcher daemon. Monitors the vault directory for changes and automatically indexes/deletes notes.
 
 ```python
-from indexer import watch
+from obsidian_ai.indexer import watch
 watch()
 # Press Ctrl+C to stop
 ```
@@ -283,7 +355,7 @@ watch()
 Adds tags to a note's YAML frontmatter. Creates frontmatter if absent.
 
 ```python
-from indexer import add_tags_to_note
+from obsidian_ai.indexer import add_tags_to_note
 add_tags_to_note("Notes/topic.md", ["python", "ml"])
 ```
 
@@ -298,7 +370,7 @@ add_tags_to_note("Notes/topic.md", ["python", "ml"])
 
 LLM-powered pipelines for querying and tagging notes.
 
-### `query(ask: str, top_k: int = 3) -> str`
+### `query(ask: str, top_k: int = 3, ...) -> str`
 
 Ask a question about the vault. Searches relevant notes, stuffs them into an LLM prompt, and returns the answer.
 
@@ -313,6 +385,13 @@ answer = pipelines.query("What are my notes about Python?")
 |-------|------|---------|-------------|
 | `ask` | `str` | *(required)* | Natural language question |
 | `top_k` | `int` | `3` | Number of notes to retrieve |
+| `use_graph` | `bool` | `False` | Expand via wiki-link graph |
+| `graph_depth` | `int` | `1` | Max hops for graph expansion |
+| `use_entities` | `bool` | `False` | Expand via entity lookup |
+| `keyword_weight` | `float` | `0.0` | BM25 keyword blend |
+| `expand_query` | `bool` | `False` | LLM query expansion |
+| `entity_types` | `list[str] \| None` | `None` | Filter entity types |
+| `min_similarity` | `float \| None` | `None` | Min similarity threshold |
 
 ### `tag_notes(ask: str, top_k: int = 5) -> str`
 
@@ -323,11 +402,40 @@ result = pipelines.tag_notes("machine learning")
 # "Tagged 3 notes: {'Notes/nn.md': ['neural-network', 'deep-learning'], ...}"
 ```
 
-**Parameters:**
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `ask` | `str` | *(required)* | Search query |
-| `top_k` | `int` | `5` | Number of notes to process |
+### `summarize_topic(topic: str, top_k: int = 5, ...) -> str`
+
+Search all notes related to a topic and return an LLM-generated consolidated summary.
+
+```python
+summary = pipelines.summarize_topic("machine learning")
+# "Your vault covers neural networks, decision trees, and reinforcement learning..."
+```
+
+### `expand_query(query: str) -> str`
+
+Use LLM to generate alternative query phrasings for broader search.
+
+```python
+expanded = pipelines.expand_query("python libraries")
+# "python libraries python packages python modules pip conda"
+```
+
+### `route_query(query: str, system: str = AGENT_SYSTEM, top_k: int = 5) -> str`
+
+Route a free-form query to the appropriate tool automatically. The LLM decides which tool to call (search, read, graph, etc.) based on the `AGENT_SYSTEM` prompt.
+
+```python
+result = pipelines.route_query("Find notes about neural networks and show me related topics")
+```
+
+### `extract_entities(text: str, path: str) -> list[dict]`
+
+Extract entities from text using the LLM. Cached per content hash. Returns `[{"name": "...", "type": "...", "confidence": 0.0-1.0}]`.
+
+```python
+entities = pipelines.extract_entities("Python is a programming language created by Guido van Rossum.", "Notes/lang.md")
+# [{"name": "Python", "type": "Technology", "confidence": 0.95}, {"name": "Guido van Rossum", "type": "Person", "confidence": 0.9}]
+```
 
 ---
 
@@ -344,8 +452,7 @@ store = EntityStore()
 
 ### `add(name: str, type: str, confidence: float, path: str, chunk_idx: int, context: str) -> None`
 
-Add or update an entity mention. Deduplicates by casefolded name — subsequent mentions update confidence,
-type (upgraded to more specific type), aliases, and path list.
+Add or update an entity mention. Deduplicates by casefolded name — subsequent mentions update confidence, type, aliases, and path list.
 
 ```python
 store.add("Python", "Technology", 0.95, "Notes/lang.md", 0, "Python is a programming language...")
@@ -381,13 +488,9 @@ entities = store.get_note_entities("Notes/lang.md")
 
 Remove all records from the in-memory store.
 
-```python
-store.clear()
-```
-
 ### `rebuild() -> None`
 
-Rebuild the entity index from ChromaDB metadata. Walks all chunks, parses `entities_str`, and repopulates the store.
+Rebuild the entity index from ChromaDB metadata. Walks all chunks, parses `entities_str`, and repopulates the store. Uses lazy import to avoid circular dependency.
 
 ### `stats() -> dict`
 
@@ -411,121 +514,188 @@ entity_store.stats()
 entity_store.entity_types()
 ```
 
-These wrap a global `EntityStore` singleton (`_store`). Import `entity_store` directly and call functions as if they were module methods.
+These wrap a global `EntityStore` singleton (`_store`).
+
+---
+
+## graph_store.py
+
+In-memory wiki-link graph built during indexing. Uses a dict-based adjacency list.
+
+### `GraphStore`
+
+```python
+from obsidian_ai.graph_store import GraphStore
+store = GraphStore()
+```
+
+### `add_edge(source: str, target: str) -> None`
+
+Add a directed edge from `source` to `target` note path.
+
+### `remove_node(path: str) -> None`
+
+Remove a node and all its edges. Also removes entity edges referencing this path.
+
+### `rename_node(old_path: str, new_path: str) -> None`
+
+Rename a node and update all edges referencing it.
+
+### `register_title(path: str, title: str) -> None`
+
+Associate a note path with its display title.
+
+### `get_backlinks(path: str) -> list[dict]`
+
+Return all notes linking TO the given note. Returns `[{"path": "...", "title": "..."}]`.
+
+### `get_linked_notes(path: str) -> list[dict]`
+
+Return all notes the given note links TO. Returns `[{"path": "...", "title": "..."}]`.
+
+### `bfs(start: str, max_depth: int = 2) -> list[dict]`
+
+BFS traversal from a seed note up to N hops. Returns reachable notes with path traces.
+
+```python
+results = store.bfs("Notes/A.md", max_depth=2)
+# [{"path": "Notes/B.md", "title": "B", "depth": 1, "trace": ["Notes/A.md", "Notes/B.md"]}, ...]
+```
+
+### `get_broken_links() -> list[dict]`
+
+Find wiki-links that don't resolve to any existing note.
+
+### `get_orphans() -> list[str]`
+
+Find notes with no incoming or outgoing wiki-links.
+
+### `get_stats() -> dict`
+
+Return graph statistics: `nodes`, `edges`, `avg_degree`, `isolated` notes, `hubs` (top 5 by degree).
+
+### `get_communities() -> dict[str, list[str]]`
+
+Detect communities using label propagation. Returns `{community_id: [note_paths]}`.
+
+### `to_dict() -> dict`
+
+Serialize graph to dict for export.
+
+### `to_dot() -> str`
+
+Export graph in Graphviz DOT format.
+
+### `add_entity_edge(entity_id: str, note_path: str) -> None`
+
+Add an edge from an entity node to a note that mentions it.
+
+### `remove_entity_edges(note_path: str) -> None`
+
+Remove all entity edges referencing a given note path.
+
+### Module-level convenience functions
+
+```python
+from obsidian_ai import graph_store
+graph_store.rebuild()
+graph_store.get_backlinks(path)
+graph_store.get_linked_notes(path)
+graph_store.bfs(start, max_depth=2)
+graph_store.get_broken_links()
+graph_store.get_orphans()
+graph_store.get_stats()
+graph_store.get_communities()
+graph_store.export_graph(format="json")
+```
+
+---
+
+## frontmatter.py
+
+YAML frontmatter parsing and manipulation utilities.
+
+### `parse(text: str) -> tuple[dict, str, int]`
+
+Parse YAML frontmatter from note text. Returns `(metadata_dict, body_text, end_line)`.
+
+```python
+from obsidian_ai.frontmatter import parse
+meta, body, end = parse("---\ntags: [python]\n---\n# Content")
+# meta = {"tags": ["python"]}, body = "# Content"
+```
+
+### `build(metadata: dict, body: str) -> str`
+
+Build full note text from metadata dict and body.
+
+### `add_tags_to_meta(metadata: dict, tags: list[str]) -> dict`
+
+Add tags to a metadata dict (no duplicates, converts string to list).
+
+### `add_tags(text: str, tags: list[str]) -> str`
+
+High-level function: parse, add tags, rebuild. Creates frontmatter if absent.
+
+```python
+result = frontmatter.add_tags("# Note", ["python"])
+# "---\ntags:\n- python\n---\n# Note"
+```
+
+### `remove_tags(text: str, tags: list[str]) -> str`
+
+Remove specific tags from frontmatter.
+
+### `set_tags(text: str, tags: list[str]) -> str`
+
+Replace all tags with the given list.
+
+---
+
+## wiki_links.py
+
+Wiki-link parsing utilities.
+
+### `extract_wiki_links(text: str) -> list[str]`
+
+Extract all `[[wikilinks]]` from note text. Returns deduplicated link targets (first-seen order). Ignores image embeds (`![[image.png]]`) and empty targets (`[[]]`).
+
+```python
+from obsidian_ai.wiki_links import extract_wiki_links
+links = extract_wiki_links("See [[Note A]] and [[Note B|display text]]")
+# ["Note A", "Note B"]
+```
+
+### `normalize_wiki_link_target(target: str) -> str`
+
+Normalize a wiki-link target: strips display text after `|`, strips section anchors after `#`, normalizes folder path separators.
 
 ---
 
 ## mcp_server.py
 
-FastMCP server exposing 14 vault tools. Run with `python -m obsidian_ai.mcp_server`.
+FastMCP server exposing **44 vault tools**. Run with `python -m obsidian_ai.mcp_server`. See [MCP Server](mcp_server.md) for detailed tool documentation.
 
-### `search_notes(query: str, n: int = 5) -> list[dict]`
+### Tools by category
 
-Semantic search. Embeds query, searches ChromaDB, deduplicates by path.
+**Search & Retrieval:** `search_notes`, `batch_search`, `retrieve_notes`, `find_duplicate_notes`, `search_by_tags`, `get_subject`, `search_entities`
 
-```python
-result = mcp_client.call_tool("search_notes", {"query": "python", "n": 5})
-# [{"path": "Notes/topic.md", "title": "topic", "chunk": 0, "distance": 0.42}]
-```
+**Read & Write:** `read_note`, `write_note`, `list_all_notes`, `list_folder`, `list_folder_deep`, `read_note_by_title`
 
-### `read_note(path: str) -> str`
+**Tags:** `add_tags`, `remove_tags`, `set_tags`, `batch_tag_notes`, `tag_notes`
 
-Fetches full note content from Obsidian.
+**Graph:** `create_backlink`, `get_backlinks`, `get_linked_notes`, `get_broken_links`, `get_orphan_notes`, `get_graph_stats`, `get_communities`, `multi_hop_traversal`, `related_notes`, `export_graph`
 
-```python
-content = mcp_client.call_tool("read_note", {"path": "Notes/topic.md"})
-```
+**LLM:** `ask_vault`, `ask_agent`, `summarize_topic`, `tag_notes`
 
-### `write_note(path: str, content: str) -> str`
+**Entities:** `search_entities`, `get_note_entities`, `get_entity_types`
 
-Creates or overwrites a note.
+**Index:** `sync_index`, `get_index_stats`, `switch_embedding_model`
 
-```python
-mcp_client.call_tool("write_note", {"path": "New Note.md", "content": "# Hello"})
-```
+**Todos:** `get_todos`, `add_todo`, `complete_todo`, `update_todo`, `delete_todo`, `sync_todos`, `get_todo_stats`, `ensure_todo_file`
 
-### `list_all_notes() -> list[str]`
+---
 
-Returns all `.md` paths in the vault.
+## dev/tasks.md
 
-```python
-notes = mcp_client.call_tool("list_all_notes", {})
-# ["Notes/topic.md", "Journal/2024-01-01.md", ...]
-```
-
-### `list_folder(folder_path: str) -> list[str]`
-
-Returns entries directly inside a specific folder (non-recursive).
-Includes both `.md` files and subdirectory names (with trailing `/`).
-
-```python
-notes = mcp_client.call_tool("list_folder", {"folder_path": "Projects"})
-# ["Projects/active.md", "Projects/archive/", "Projects/notes.md"]
-```
-
-### `search_by_tags(tags: list[str], n: int = 10) -> list[dict]`
-
-Find notes that have ALL of the given YAML frontmatter tags. Returns paths, titles, and matching tags.
-
-```python
-results = mcp_client.call_tool("search_by_tags", {"tags": ["python", "ml"], "n": 5})
-# [{"path": "Notes/topic.md", "title": "topic", "tags": ["python", "ml"]}]
-```
-
-**Note:** Tags are only stored during indexing. Run `sync_index` first if you haven't re-indexed since this tool was added.
-
-### `read_note_by_title(title: str, folder_path: str = "") -> str`
-
-Look up a note by its title (filename without extension) and return its full content. Optionally scope to a specific folder to disambiguate duplicate titles.
-
-```python
-content = mcp_client.call_tool("read_note_by_title", {"title": "README"})
-content = mcp_client.call_tool("read_note_by_title", {"title": "README", "folder_path": "Projects"})
-```
-
-**Duplicate title handling:** If multiple notes share the same title (e.g., two `README.md` files in different folders), all matching notes are returned with labeled `─── path ───` separators. Pass `folder_path` to narrow results to a specific folder.
-
-### `add_tags(path: str, tags: list[str]) -> str`
-
-Adds tags to YAML frontmatter. Creates frontmatter if absent.
-
-```python
-mcp_client.call_tool("add_tags", {"path": "Notes/topic.md", "tags": ["python", "ml"]})
-# "Tags added to Notes/topic.md: ['python', 'ml']"
-```
-
-### `create_backlink(path_a: str, path_b: str) -> str`
-
-Creates mutual `[[backlinks]]` between two notes. Skips if link already exists.
-
-```python
-mcp_client.call_tool("create_backlink", {"path_a": "Notes/A.md", "path_b": "Notes/B.md"})
-# "Linked: Notes/A.md ↔ Notes/B.md"
-```
-
-### `sync_index() -> str`
-
-Re-runs the full indexing pipeline.
-
-```python
-mcp_client.call_tool("sync_index", {})
-# "Index sync complete. Check indexer.log for details."
-```
-
-### `ask_vault(question: str, top_k: int = 3) -> str`
-
-Ask a question, get an LLM-powered answer from vault content.
-
-```python
-mcp_client.call_tool("ask_vault", {"question": "What is machine learning?"})
-# "Machine learning is a subset of AI that..."
-```
-
-### `tag_notes(query: str, top_k: int = 5) -> str`
-
-Auto-suggest tags for notes matching a query.
-
-```python
-mcp_client.call_tool("tag_notes", {"query": "python"})
-# "Tagged 2 notes: {'Notes/py.md': ['python', 'programming'], ...}"
-```
+Internal project task tracking. Lists all tasks, their status, and progress.

@@ -135,7 +135,7 @@ def test_get_index_stats():
     assert stats["unique_notes"] == 2
 
 
-# ── dedup_paths ────────────────────────────────────────────────────
+# ── _dedup_paths ───────────────────────────────────────────────────
 
 
 def test_dedup_paths():
@@ -144,7 +144,7 @@ def test_dedup_paths():
         {"metadata": {"path": "b.md", "title": "B"}},
         {"metadata": {"path": "a.md", "title": "A"}},
     ]
-    deduped = chroma_store.dedup_paths(results)
+    deduped = chroma_store._dedup_paths(results)
     assert len(deduped) == 2
     paths = [p for p, _ in deduped]
     assert "a.md" in paths

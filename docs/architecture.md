@@ -5,196 +5,195 @@
 The system reads notes from Obsidian, embeds them as semantic vectors, and stores them in a local vector database for search. An MCP server exposes these capabilities to AI agents. All processing runs locally — no data leaves the machine.
 
 ```
-Agent (Goose / Claude / Cursor)
+Agent (Goose / Claude / Cursor / opencode)
         │
         ▼
-   mcp_server.py ──── FastMCP (stdio)
-    ├── search_notes(query)
-    ├── read_note(path)
-    ├── write_note(path, content)
-    ├── list_all_notes()
-    ├── list_folder(folder_path)         ← non-recursive
-    ├── list_folder_deep(folder_path)    ← recursive
-    ├── add_tags(path, tags)
-    ├── create_backlink(a, b)
-    ├── read_note_by_title(title, folder_path)
-    ├── get_index_stats()
-    ├── sync_index()
-    ├── ask_vault(question)              ← LLM-powered
-    ├── tag_notes(query)                 ← LLM-powered
-    ├── search_entities(query)           ← entity-aware
-    ├── get_note_entities(path)
-    └── get_entity_types()
+   mcp_server.py ──── FastMCP (stdio) ──── 44 tools
+    ├── Search & Retrieval (search_notes, batch_search, retrieve_notes, ...)
+    ├── Read & Write (read_note, write_note, list_all_notes, ...)
+    ├── Tag Management (add_tags, remove_tags, set_tags, tag_notes, ...)
+    ├── Entity System (search_entities, get_note_entities, ...)
+    ├── Graph (create_backlink, related_notes, communities, ...)
+    ├── LLM-Powered (ask_vault, summarize_topic, ask_agent, ...)
+    ├── Index Management (sync_index, switch_embedding_model, ...)
+    └── Todo Management (add_todo, get_todos, complete_todo, ...)
         │
-        ├──────────────────┐
-        ▼                  ▼
-obsidian_client.py    chroma_store.py
-        │                  │
-        ▼                  ▼
-  Obsidian REST API    ChromaDB
-  (port 27123)         ./chroma_db/
-        │
-        ▼
-   llm_client.py
-   ├── embed(text) → Ollama → nomic-embed-text
-   └── chat(messages) → Ollama → qwen3:8b
-        │
-        ▼
-   pipelines.py
-   ├── query(question) → search + LLM answer
-   └── tag_notes(query) → search + LLM tag suggestions
+        ├──────────────────────────────────┬──────────────────────┐
+        ▼                                  ▼                      ▼
+obsidian_client.py                  chroma_store.py         pipelines.py
+        │                            + entity_store           ├── query()
+        ▼                            + graph_store            ├── tag_notes()
+  Obsidian REST API                                          ├── summarize_topic()
+  (port 27123)                    ChromaDB (./chroma_db/)     ├── extract_entities()
+        │                             │                      ├── expand_query()
+        ▼                             ▼                      └── route_query()
+   llm_client.py               data/*.json (caches,
+   ├── embed(text) → Ollama →  content hashes, entities,        graph_store.py
+   │   nomic-embed-text         summaries, title maps)          ├── BFS traversal
+   └── chat(messages) → Ollama                                 ├── community detection
+       qwen3:8b                                                 ├── orphan/broken links
+                                                                └── DOT/JSON export
 ```
 
 ## Components
 
 ### config.py
-Loads environment variables from `.env` via `python-dotenv`. Exports all settings as module-level constants. Defines `EXCLUDE_PATTERNS` for vault traversal filtering.
+Loads environment variables from `.env` via `python-dotenv`. Exports all settings as module-level constants including `data_dir`, `chunk_size`, `chunk_overlap`, and `EXCLUDE_PATTERNS`.
 
 ### obsidian_client.py
-Thin HTTP wrapper around the Obsidian Local REST API. Provides:
-- `list_all_notes()` — recursively walks the vault, returns all `.md` paths
-- `list_folder(folder_path)` — lists `.md` files and subdirectories in a folder (non-recursive)
-- `list_folder_deep(folder_path)` — recursively walks a folder, returns all `.md` paths
-- `get_note(path)` — fetches note content as text
-- `put_note(path, content)` — creates or overwrites a note
-
-Excludes files/folders matching `EXCLUDE_PATTERNS` during traversal.
+Thin HTTP wrapper around the Obsidian Local REST API. Provides list, read, write, and directory operations. Cache files (`note_paths.json`, `title_to_path.json`) stored in `config.data_dir`.
 
 ### llm_client.py
 Wrapper around Ollama's embedding and chat APIs. Provides:
-- `embed(text)` — returns a 768-dimensional float vector
-- `chat(messages, model, think)` — sends chat messages to Ollama, returns response text
-- `truncate_to_budget(text, max_words)` — truncates text to fit LLM context
-- `_request_with_retry()` — all requests use 3 retries with exponential backoff for timeouts and transient HTTP errors
+- `embed(text)` — returns a vector (768-dim for `nomic-embed-text`)
+- `chat(messages, model, think)` — chat completion with retry
+- `truncate_to_budget(text, max_words)` — truncation for context limits
+- `clear_embed_cache()` / `embed_cache_info()` — cache management
+- `switch_embed_model(model_name)` — runtime model switching
+- `_request_with_retry()` — 3 retries with exponential backoff (2s → 4s → 8s)
 
-All HTTP requests use retry logic with exponential backoff (2s → 4s → 8s) for `ReadTimeout`, `ConnectionError`, and HTTP 429/502/503 responses.
+Embeddings are cached in memory by text hash. Chat requests are limited to 1 concurrent call via `_llm_chat_lock` (semaphore) to prevent Ollama timeout pileup during parallel indexing.
 
 ### chroma_store.py
 Local ChromaDB persistence layer. Provides:
-- `upsert(path, chunk_idx, embedding, metadata)` — stores a chunk's embedding
-- `delete_by_path(path)` — removes all chunks for a note (used before re-indexing)
-- `query(embedding, n)` — semantic search, returns top-k results with distances
+- `upsert`, `delete_by_path`, `get_by_path`, `get_by_title`, `query` — core CRUD
+- `get_all_documents`, `get_metadata_by_ids` — bulk access
+- `find_duplicate_notes` — semantic dedup via embedding similarity
+- `search_by_tags` — tag-based lookup via `$contains`
+- `get_index_stats` — chunk and note counts
+- `reset_collection` — wipe for model switching
 
-Document IDs use the format `{path}::chunk_{N}` so multiple chunks per note can coexist.
+Document IDs use the format `{path}::chunk_{N}`.
 
 ### entity_store.py
 Persistent inverted index mapping entity names to note paths. Entities are extracted per-note during indexing via LLM (Qwen3:8b) and stored as:
-
 - **`data/entities.json`** — entity index (JSON), rebuilt from ChromaDB metadata on `sync_index`
-- **`entities_str` metadata** — per-chunk string like `,Technology:Python,Project:Obsidian,` for ChromaDB `$contains` queries
-- **Graph nodes** — entity nodes (`__entity:{type}:{name}`) in `GraphStore` for cross-referencing
+- **`entities_str` metadata** — per-chunk string for ChromaDB `$contains` queries
+- **Graph nodes** — entity nodes in `GraphStore` for cross-referencing
 
 Provides: `add`, `search`, `search_by_type`, `get_note_entities`, `rebuild`, `stats`, `entity_types`.
 
+### graph_store.py
+In-memory wiki-link graph built during indexing. Dict-based adjacency list (`_adj: dict[str, set[str]]`). Built by extracting `[[wikilinks]]` from note content. Provides:
+- BFS traversal (`multi_hop_traversal`)
+- Backlinks / outgoing links
+- Broken link detection
+- Orphan note detection
+- Community detection (label propagation)
+- Graph export (DOT / JSON)
+- Entity node support (`__entity:{type}:{name}`), excluded from stats/export
+
 ### indexer.py
-One-shot indexing script and file watcher. Pipeline:
+Indexing pipeline with incremental updates and file watcher. Pipeline:
 1. Fetch all note paths from Obsidian
 2. For each note: get content, skip if under 20 words
 3. Delete old chunks from ChromaDB (for re-indexing)
-4. Split content into 500-word chunks (100-word overlap)
-5. Extract entities via LLM (cached per path per run)
-6. Embed each chunk, store in ChromaDB with metadata (including `entities_str`)
+4. Split content into chunks (heading-aware, 500-word with 100-word overlap)
+5. Extract entities via LLM (cached per content hash per run)
+6. Generate summary via LLM (cached per content hash, stored in chunk-0 metadata)
+7. Embed each chunk, store in ChromaDB with full metadata
 
-Also provides:
-- `add_tags_to_note()` for YAML frontmatter manipulation
-- `_index_note()` / `_delete_note()` for incremental updates
-- `watch()` — file watcher daemon using `watchdog`
-
-The watcher monitors the vault directory and automatically re-indexes on changes with 2-second debounce.
+Supports `SKIP_ENTITIES` and `SKIP_SUMMARIES` flags to skip LLM-dependent steps. Uses `_llm_chat_lock` semaphore to limit concurrent LLM calls during parallel indexing.
 
 ### pipelines.py
-LLM-powered pipelines for querying and auto-tagging. Provides:
-- `query(question)` — search notes → fetch full content → LLM answers using vault context
-- `tag_notes(query)` — search notes → LLM suggests tags → auto-applies via `add_tags`
+LLM-powered pipelines:
+- `query()` — search → fetch content → LLM answers using vault context
+- `tag_notes()` — search → LLM suggests tags → auto-applies via `add_tags`
+- `summarize_topic()` — multi-note LLM summary
+- `extract_entities()` — entity extraction (cached, with retry)
+- `expand_query()` — LLM query expansion for broader search
+- `route_query()` — agentic tool routing (`AGENT_SYSTEM` prompt with 6 tools)
 
-Both pipelines use `truncate_to_budget()` to stay within context limits.
+All pipelines use `truncate_to_budget()` to stay within context limits. Summary from chunk-0 metadata is injected into prompts when available.
 
-### graph_store.py
-In-memory wiki-link graph built during indexing. Uses a dict-based adjacency list (`_adj: dict[str, set[str]]`), populated by extracting `[[wikilinks]]` from note content. Supports BFS traversal, broken link detection, community detection (label propagation), and graph export (DOT/JSON). Excludes `__entity:*` nodes from stats, orphan detection, and exports.
+### wiki_links.py
+Wiki-link parsing and normalization. Extracts `[[wikilinks]]` from markdown text, handles display text (`|`), section anchors (`#`), and deduplication.
+
+### frontmatter.py
+YAML frontmatter parsing and manipulation. Used by tag operations.
 
 ### mcp_server.py
-FastMCP server exposing vault tools via stdio transport. Wraps `obsidian_client`, `chroma_store`, `llm_client`, `indexer`, `pipelines`, `entity_store`, and `graph_store` for agent access. Logs all tool calls to `mcp_calls.log`.
+FastMCP server exposing 44 vault tools via stdio transport. Wraps all other modules for agent access. Logs all tool calls to `mcp_calls.log`.
 
 ## Data Flow
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                   Agent (Goose / Claude / Cursor)            │
+│                   Agent (MCP client)                         │
 └──────────────────────────────┬───────────────────────────────┘
                                │ MCP (stdio)
                                ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                      mcp_server.py                               │
-│  search_notes │ read_note │ write_note │ ask_vault │ ...         │
-│  search_entities │ get_note_entities │ get_entity_types           │
+│                      mcp_server.py (44 tools)                    │
 └────────┬─────────────────────────┬───────────────────────────────┘
          │                         │
          ▼                         ▼
 ┌──────────────┐          ┌──────────────────┐
 │  obsidian_   │          │  chroma_store    │
 │  client.py   │          │  + entity_store  │
-└──────┬───────┘          │  + graph_store   │
-       │                  └────────┬─────────┘
-       ▼                           │
-┌──────────────┐                   │
-│  Obsidian    │                   ▼
-│  REST API    │          ┌──────────────────┐
-└──────┬───────┘          │  ChromaDB        │
-       │                  │  entities.json   │
-       ▼                  │  graph (memory)  │
-┌──────────────┐          └──────────────────┘
-│  llm_client  │          ┌──────────────┐
-│  └─ embed()  │          │  pipelines   │
-│  └─ chat()   │          │  └─ query()  │
-└──────┬───────┘          │  └─ tag()    │
-       │                  │  └─ extract_ │
-       │                  │     entities()│
-       ▼                  └──────────────┘
-┌──────────────┐
-│  Ollama      │
-│  ├─ nomic-embed-text (embeddings)
-│  └─ qwen3:8b (chat/LLM + entity extraction)
+│  + wiki_links│          │  + graph_store   │
+└──────┬───────┘          └────────┬─────────┘
+       │                           │
+       ▼                           ▼
+┌──────────────┐          ┌──────────────────┐
+│  Obsidian    │          │  ChromaDB        │
+│  REST API    │          │  entities.json   │
+└──────┬───────┘          │  graph (memory)  │
+       │                  └──────────────────┘
+       ▼                  ┌──────────────┐
+┌──────────────┐          │  pipelines   │
+│  llm_client  │          │  ├─ query()  │
+│  ├─ embed()  │          │  ├─ tag()    │
+│  └─ chat()   │          │  ├─ extract  │
+└──────┬───────┘          │  │  entities()│
+       │                  │  ├─ expand   │
+       ▼                  │  │  query()  │
+┌──────────────┐          │  └─ route    │
+│  Ollama      │          │     query()  │
+│  ├─ nomic-embed-text    └──────────────┘
+│  └─ qwen3:8b
 └──────────────┘
 ```
 
 ## Chunking Strategy
 
-Notes are split into overlapping chunks to stay within Ollama's 8192 token embedding limit:
+Notes are split into overlapping chunks to stay within Ollama's embedding limit:
 
 - **Chunk size:** 500 words (~650 tokens)
 - **Overlap:** 100 words (~130 tokens)
-- **Why overlap:** Preserves context at chunk boundaries so semantic meaning isn't lost at split points
-
-Example: A 1200-word note becomes 3 chunks:
-```
-Chunk 0: words 0-499
-Chunk 1: words 400-899    (100-word overlap with chunk 0)
-Chunk 2: words 800-1199   (100-word overlap with chunk 1)
-```
+- **Heading-aware:** Notes are split by markdown headings first, then large sections are chunked. Each chunk retains its heading context.
 
 ## LLM Integration
 
-Three modes of LLM usage:
-
-### Entity Extraction (`extract_entities`)
+### Entity Extraction
 1. During indexing, each note's sanitized content is sent to Qwen3:8b with an extraction prompt
 2. LLM returns JSON entities: `[{"name": "...", "type": "...", "confidence": 0.0-1.0}]`
 3. Entities are stored in `entity_store` and written as `entities_str` metadata on every chunk
-4. Subsequent `sync_index` rebuilds the entity store from ChromaDB metadata (no LLM calls)
+4. Results are cached per content hash (in-memory + `entity_cache.json`)
 
-### Query Mode (`ask_vault`)
-1. Embed the user's question
-2. Search ChromaDB for top-k relevant notes
-3. Fetch full note content (truncated to 3000 words each)
-4. Stuff into LLM prompt with system instructions
-5. Return LLM-generated answer
+### Summary Generation
+1. During indexing, each note's sanitized content is sent to Qwen3:8b with a summarization prompt
+2. Summary (2-3 sentences) is stored in chunk-0's ChromaDB metadata
+3. Passed through `retrieve()` results and used in `query()`, `summarize_topic()`, `tag_notes()` context
+4. Results are cached per content hash (in-memory + `summary_cache.json`)
 
-### Action Mode (`tag_notes`)
-1. Embed the search query
-2. Search ChromaDB for matching notes
-3. Fetch full note content
-4. Send to LLM with instructions to suggest tags as JSON
-5. Parse JSON response, apply tags via `add_tags`
+### Agentic Routing (`route_query`)
+1. LLM receives the `AGENT_SYSTEM` prompt describing 6 available tools (search_notes, read_note, get_backlinks, get_linked_notes, related_notes, multi_hop_traversal)
+2. LLM decides which tool to call and with what parameters
+3. The tool is called and its result returned
+4. Used by the `ask_agent` MCP tool
+
+### Embedding Model Switching
+1. MCP tool `switch_embedding_model` verifies the model exists in Ollama
+2. Clears embedding cache, resets ChromaDB collection, updates config
+3. Triggers full re-index with the new model
+
+## Concurrency
+
+- Parallel indexing uses 2-6 workers via `ThreadPoolExecutor`
+- At most 1 `llm_client.chat()` call runs at any time (entity extraction and summary generation are serialized via `_llm_chat_lock`)
+- Embedding calls (`embed()`) are not rate-limited (they're fast)
+- Entity and summary caches are thread-safe (per-cache locks)
 
 ## Excluded Content
 

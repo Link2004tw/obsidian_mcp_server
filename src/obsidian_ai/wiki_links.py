@@ -43,7 +43,7 @@ def extract_wiki_links(content: str) -> list[str]:
 
 def _get_cache_path() -> str:
     from . import config
-    cache_dir = os.path.dirname(os.path.abspath(config.chroma_path)) if os.path.isabs(config.chroma_path) else os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), os.path.dirname(config.chroma_path))
+    cache_dir = config.data_dir
     os.makedirs(cache_dir, exist_ok=True)
     return os.path.join(cache_dir, "title_to_path.json")
 

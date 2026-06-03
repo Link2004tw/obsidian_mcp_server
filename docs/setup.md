@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Python 3.11+
+- Python 3.14+
 - [Ollama](https://ollama.com/) installed and running
 - [Obsidian](https://obsidian.md/) with the [Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api) plugin enabled
 
@@ -57,6 +57,7 @@ OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_EMBED_MODEL=nomic-embed-text
 OLLAMA_CHAT_MODEL=qwen3:8b
 
+VAULT_PATH=C:/Users/me/your-vault
 CHROMA_PATH=data/chroma_db
 ```
 
@@ -79,6 +80,14 @@ CHROMA_PATH=data/chroma_db
 python -m obsidian_ai.indexer
 ```
 
+### Skip entity extraction or summaries
+
+```bash
+python -m obsidian_ai.indexer --skip-entities
+python -m obsidian_ai.indexer --skip-summaries
+python -m obsidian_ai.indexer --skip-entities --skip-summaries
+```
+
 ### Watch mode (auto-index on changes)
 
 ```bash
@@ -87,12 +96,14 @@ python -m obsidian_ai.indexer --watch
 
 This starts a file watcher that automatically re-indexes notes when they are created, modified, deleted, or renamed.
 
-This will:
+A full index run will:
 1. Connect to your Obsidian vault via the REST API
 2. Fetch all `.md` notes (excluding backup folders and `.excalidraw.md` files)
-3. Chunk notes into 500-word segments with 100-word overlap
-4. Embed each chunk via Ollama
-5. Store embeddings in ChromaDB
+3. Chunk notes into 500-word segments with 100-word overlap (heading-aware)
+4. Extract entities via LLM (cached per content hash)
+5. Generate summaries via LLM (cached per content hash)
+6. Embed each chunk via Ollama
+7. Store embeddings in ChromaDB with metadata (entities, summary, tags, links)
 
 Expected output:
 
@@ -266,6 +277,8 @@ A CLI wrapper is available for quick access to common operations:
 python cli.py index          # Run full index
 python cli.py watch          # Start file watcher
 python cli.py search "query" # Semantic search
-python cli.py tag "query"    # Auto-tag notes
+python cli.py tag-notes "query"  # Auto-tag notes
 python cli.py stats          # Show index stats
+python cli.py sync           # Re-run indexer
+python cli.py ask "question" # Ask vault a question
 ```

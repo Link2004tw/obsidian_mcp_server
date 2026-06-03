@@ -1,6 +1,6 @@
 # Obsidian AI Knowledge System
 
-A local, privacy-first knowledge management layer for Obsidian vaults. Provides semantic search, automatic tagging, backlink generation, and natural language querying — all running locally with no cloud dependency.
+A local, privacy-first knowledge management layer for Obsidian vaults. Provides semantic search, automatic tagging, entity extraction, graph-based RAG, summarization, and natural language querying — all running locally with no cloud dependency.
 
 ---
 
@@ -32,6 +32,7 @@ OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_EMBED_MODEL=nomic-embed-text
 OLLAMA_CHAT_MODEL=qwen3:8b
 
+VAULT_PATH=C:/Users/you/your-vault
 CHROMA_PATH=data/chroma_db
 ```
 
@@ -57,6 +58,8 @@ python -m obsidian_ai.mcp_server
 |---------|-------------|
 | `python -m obsidian_ai.indexer` | One-shot full index of the Obsidian vault |
 | `python -m obsidian_ai.indexer --watch` | Start file watcher (auto-indexes on changes) |
+| `python -m obsidian_ai.indexer --skip-entities` | Index without entity extraction |
+| `python -m obsidian_ai.indexer --skip-summaries` | Index without summary generation |
 
 ### CLI
 
@@ -64,6 +67,10 @@ All commands communicate with the MCP server via stdio — same code path as any
 
 | Command | Description |
 |---------|-------------|
+| `python cli.py index` | Run full index |
+| `python cli.py watch` | Start file watcher daemon |
+| `python cli.py sync` | Re-run the full indexer pipeline |
+| `python cli.py stats` | Show index statistics (chunks, notes, model) |
 | `python cli.py search <query>` | Semantic search (`-n` for count, `--tags`, `--folder`, `--date-after`, etc.) |
 | `python cli.py read <path>` | Read full note content by path |
 | `python cli.py write <path> <content>` | Create or overwrite a note (use quotes for content) |
@@ -74,9 +81,6 @@ All commands communicate with the MCP server via stdio — same code path as any
 | `python cli.py search-by-tags <tag> [tag...]` | Find notes by YAML frontmatter tags (`-n` for max results) |
 | `python cli.py add-tags <path> <tag> [tag...]` | Add tags to a note's YAML frontmatter |
 | `python cli.py create-backlink <a> <b>` | Create mutual `[[backlinks]]` between two notes |
-| `python cli.py watch` | Start file watcher daemon (auto-indexes on changes) |
-| `python cli.py sync` | Re-run the full indexer pipeline |
-| `python cli.py stats` | Show index statistics (chunks, notes, model) |
 | `python cli.py ask <question>` | Ask a natural-language question about the vault (`-k` for context) |
 | `python cli.py tag-notes <query>` | Auto-suggest & apply tags (`-k` for note count) |
 
@@ -86,33 +90,87 @@ All commands communicate with the MCP server via stdio — same code path as any
 |---------|-------------|
 | `python -m obsidian_ai.mcp_server` | Start the MCP server (stdio transport) |
 
-### MCP Tools (via agent)
+---
 
-| Tool | Parameters | Description |
-|------|------------|-------------|
-| `search_notes` | `query: str`, `n: int = 5` | Semantic search across indexed notes |
-| `read_note` | `path: str` | Fetch full note content |
-| `write_note` | `path: str`, `content: str` | Create or overwrite a note |
-| `list_all_notes` | — | List all note paths in the vault |
-| `list_folder` | `folder_path: str` | List note paths directly in a folder (non-recursive) |
-| `list_folder_deep` | `folder_path: str` | List all note paths in a folder (recursive, includes subdirs) |
-| `add_tags` | `path: str`, `tags: list[str]` | Add tags to YAML frontmatter |
-| `create_backlink` | `path_a: str`, `path_b: str` | Create mutual `[[backlinks]]` |
-| `sync_index` | — | Re-run the full indexer pipeline |
-| `ask_vault` | `question: str`, `top_k: int = 3` | Ask a question, get an LLM-powered answer from vault content |
-| `tag_notes` | `query: str`, `top_k: int = 5` | Auto-suggest tags for notes matching a query |
-| `search_entities` | `entity_name: str`, `entity_type: str?`, `n: int = 10`, `use_graph: bool = False` | Find notes mentioning an entity, with optional graph expansion |
-| `get_note_entities` | `path: str` | Return all entities found in a specific note |
-| `get_entity_types` | — | List all entity types present in the index |
+## MCP Tools (44 total)
 
-### Development
+### Search & Retrieval
+| Tool | Description |
+|------|-------------|
+| `search_notes` | Semantic search across indexed notes with metadata filters |
+| `batch_search` | Run multiple searches in one call |
+| `retrieve_notes` | Multi-strategy retrieval (semantic + entity + graph) |
+| `find_duplicate_notes` | Find near-duplicate notes via embedding similarity |
+| `search_by_tags` | Find notes by YAML frontmatter tags |
+| `search_entities` | Find notes mentioning a specific entity |
+| `get_subject` | Get notes related to a free-form subject |
 
-| Command | Description |
-|---------|-------------|
-| `uv pip install -e .` | Install project in editable mode |
-| `ollama pull nomic-embed-text` | Pull/update the embedding model |
-| `ollama list` | List installed Ollama models |
-| `ollama serve` | Start Ollama server manually |
+### Reading & Writing
+| Tool | Description |
+|------|-------------|
+| `read_note` | Fetch full note content |
+| `write_note` | Create or overwrite a note |
+| `list_all_notes` | List all note paths in the vault |
+| `list_folder` | List entries directly in a folder (non-recursive) |
+| `list_folder_deep` | List all notes in a folder (recursive) |
+| `read_note_by_title` | Look up a note by its filename |
+
+### Tag Management
+| Tool | Description |
+|------|-------------|
+| `add_tags` | Add tags to YAML frontmatter |
+| `remove_tags` | Remove specific tags from YAML frontmatter |
+| `set_tags` | Replace all tags on a note |
+| `batch_tag_notes` | Add tags to multiple notes at once |
+| `tag_notes` | Auto-suggest tags via LLM |
+
+### Wiki-Link Graph
+| Tool | Description |
+|------|-------------|
+| `create_backlink` | Create mutual backlinks between two notes |
+| `get_backlinks` | Return notes linking TO a given note |
+| `get_linked_notes` | Return notes a given note links TO |
+| `get_broken_links` | Find unresolved wiki-links |
+| `get_orphan_notes` | Find notes with no wiki-links |
+| `get_graph_stats` | Graph statistics (nodes, edges, hubs, isolates) |
+| `get_communities` | Detect communities via label propagation |
+| `multi_hop_traversal` | BFS graph traversal from a seed note |
+| `related_notes` | Find related notes via semantic + graph proximity |
+| `export_graph` | Export wiki-link graph in DOT/JSON |
+
+### LLM-Powered
+| Tool | Description |
+|------|-------------|
+| `ask_vault` | Ask a question, get an LLM-powered answer |
+| `ask_agent` | Route a query automatically to the best tool |
+| `summarize_topic` | LLM-generated consolidated summary of a topic |
+| `tag_notes` | Auto-suggest and apply tags via LLM |
+
+### Entity System
+| Tool | Description |
+|------|-------------|
+| `search_entities` | Find notes mentioning an entity |
+| `get_note_entities` | Return all entities found in a note |
+| `get_entity_types` | List all entity types in the index |
+
+### Index Management
+| Tool | Description |
+|------|-------------|
+| `sync_index` | Re-run the full indexer pipeline |
+| `get_index_stats` | Show index statistics |
+| `switch_embedding_model` | Switch embedding model at runtime |
+
+### Todo Management
+| Tool | Description |
+|------|-------------|
+| `get_todos` | List todos with filters |
+| `add_todo` | Add a new todo task |
+| `complete_todo` | Mark a todo as completed |
+| `update_todo` | Update one or more fields of a todo |
+| `delete_todo` | Delete a todo by id |
+| `sync_todos` | Recalculate todo counts |
+| `get_todo_stats` | Aggregated todo statistics |
+| `ensure_todo_file` | Create todos.md if missing |
 
 ---
 
@@ -122,34 +180,43 @@ All commands communicate with the MCP server via stdio — same code path as any
 obsidian-ai/
 ├── src/
 │   └── obsidian_ai/
-│       ├── __init__.py
-│       ├── config.py              # Environment variables and settings
-│       ├── logger.py              # Shared logging module
-│       ├── obsidian_client.py     # Obsidian REST API wrapper
-│       ├── llm_client.py          # Ollama embedding wrapper
-│       ├── chroma_store.py        # ChromaDB vector storage
-│       ├── indexer.py             # Vault indexing pipeline + file watcher
-│       ├── pipelines.py           # Query & action pipelines (LLM-powered)
-│       ├── entity_store.py        # Entity extraction and inverted index
-│       ├── graph_store.py         # Wiki-link graph storage and traversal
-│       └── mcp_server.py          # MCP server
-├── cli.py                         # CLI wrapper (index, watch, search, tag, stats)
-├── docs/                          # User documentation
+│       ├── __init__.py              # Package init
+│       ├── config.py                # Environment variables and settings
+│       ├── logger.py                # Shared logging module
+│       ├── frontmatter.py           # YAML frontmatter parsing/manipulation
+│       ├── obsidian_client.py       # Obsidian REST API wrapper
+│       ├── llm_client.py            # Ollama embedding + chat wrapper
+│       ├── chroma_store.py          # ChromaDB vector storage
+│       ├── indexer.py               # Vault indexing pipeline + file watcher
+│       ├── pipelines.py             # Query & action pipelines (LLM-powered)
+│       ├── entity_store.py          # Entity extraction and inverted index
+│       ├── graph_store.py           # Wiki-link graph storage and traversal
+│       ├── wiki_links.py            # Wiki-link parsing utilities
+│       └── mcp_server.py            # FastMCP server (44 tools)
+├── cli.py                           # CLI wrapper (argparse, 15 commands)
+├── docs/                            # User documentation
 │   ├── setup.md
 │   ├── architecture.md
 │   ├── api.md
 │   ├── mcp_server.md
 │   ├── indexer.md
+│   ├── files.md
 │   └── troubleshooting.md
-├── dev/                           # Internal project docs
-│   └── tasks.md
-├── data/
-│   └── chroma_db/                 # Vector database (gitignored)
-├── logs/                          # Log files (gitignored)
+├── data/                            # Persistent data
+│   ├── chroma_db/                   # Vector database (gitignored)
+│   ├── content_hashes.json
+│   ├── entity_cache.json
+│   ├── summary_cache.json
+│   ├── note_paths.json
+│   ├── title_to_path.json
+│   ├── graph.json
+│   └── entities.json
+├── logs/                            # Log files (gitignored)
 │   ├── indexer.log
 │   └── mcp_calls.log
-├── .env                           # API keys and config (gitignored)
-├── pyproject.toml                 # Project dependencies
+├── tests/                           # Unit tests (226+)
+├── .env                             # API keys and config (gitignored)
+├── pyproject.toml                   # Project dependencies
 └── README.md
 ```
 
@@ -161,7 +228,7 @@ obsidian-ai/
 - [Architecture](docs/architecture.md) — System design and data flow
 - [API Reference](docs/api.md) — Function signatures for all modules
 - [MCP Server](docs/mcp_server.md) — Tool details and agent configuration
-- [Indexer](docs/indexer.md) — Chunking, sanitization, and indexing details
+- [Indexer](docs/indexer.md) — Chunking, entity extraction, summaries
 - [Files](docs/files.md) — Project structure reference
 - [Troubleshooting](docs/troubleshooting.md) — Common errors and fixes
 
@@ -186,8 +253,6 @@ Add this MCP server to any compatible AI agent. The server uses **stdio** transp
 ```
 
 > **Note:** Replace `cwd` with your actual project path.
-
----
 
 ### Goose
 

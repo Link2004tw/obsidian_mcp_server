@@ -15,9 +15,9 @@ from .wiki_links import extract_wiki_links
 
 log = get_logger(__name__, log_file="indexer.log")
 
-HASH_MAP_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "content_hashes.json")
-ENTITY_CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "entity_cache.json")
-SUMMARY_CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "summary_cache.json")
+HASH_MAP_PATH = os.path.join(config.data_dir, "content_hashes.json")
+ENTITY_CACHE_PATH = os.path.join(config.data_dir, "entity_cache.json")
+SUMMARY_CACHE_PATH = os.path.join(config.data_dir, "summary_cache.json")
 
 # Persistent entity cache: content_hash -> list[dict] (shared across threads).
 _entity_cache: dict[str, list[dict]] = {}
@@ -26,6 +26,11 @@ _entity_cache_lock = threading.Lock()
 # Persistent summary cache: content_hash -> str
 _summary_cache: dict[str, str] = {}
 _summary_cache_lock = threading.Lock()
+
+# Limit concurrent Ollama chat calls (entity extraction + summary) to 1
+# to prevent overwhelming Ollama during parallel indexing. Embeddings
+# (POST /api/embeddings) are unaffected and still run in parallel.
+_llm_chat_lock = threading.Semaphore(1)
 
 # When True, skip LLM-based entity extraction for faster indexing.
 # Existing entity data is preserved (not cleared) so entity search still works.
@@ -118,12 +123,22 @@ def _generate_summary_cached(sanitized: str, content_hash: str | None) -> str:
         {"role": "system", "content": SUMMARY_SYSTEM},
         {"role": "user", "content": f"Note content:\n\n{sanitized[:3000]}"},
     ]
-    summary = llm_client.chat(messages, think=False).strip()
 
-    if content_hash:
-        with _summary_cache_lock:
-            _summary_cache[content_hash] = summary
-    return summary
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            summary = llm_client.chat(messages, think=False).strip()
+            if content_hash:
+                with _summary_cache_lock:
+                    _summary_cache[content_hash] = summary
+            return summary
+        except Exception as e:
+            last_exc = e
+            if attempt < 2:
+                wait = 2 ** attempt
+                log.warning(f"Summary generation attempt {attempt + 1} failed, retrying in {wait}s: {e}")
+                time.sleep(wait)
+    raise last_exc  # type: ignore[misc]
 
 
 def _extract_entities_cached(sanitized: str, path: str, content_hash: str | None) -> list[dict]:
@@ -134,13 +149,21 @@ def _extract_entities_cached(sanitized: str, path: str, content_hash: str | None
         if cached is not None:
             return cached
 
-    entities = pipelines.extract_entities(sanitized, path=path)
-
-    if content_hash:
-        with _entity_cache_lock:
-            _entity_cache[content_hash] = entities
-
-    return entities
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            entities = pipelines.extract_entities(sanitized, path=path)
+            if content_hash:
+                with _entity_cache_lock:
+                    _entity_cache[content_hash] = entities
+            return entities
+        except Exception as e:
+            last_exc = e
+            if attempt < 2:
+                wait = 2 ** attempt
+                log.warning(f"Entity extraction attempt {attempt + 1} failed for {path}, retrying in {wait}s: {e}")
+                time.sleep(wait)
+    raise last_exc  # type: ignore[misc]
 
 
 def _embed_workers_for_current_machine() -> int:
@@ -379,7 +402,8 @@ def _index_note(path: str, content: str | None = None, *, embed_workers: int = 1
         entities = []
         if not SKIP_ENTITIES:
             try:
-                entities = _extract_entities_cached(sanitized, path, _content_hash)
+                with _llm_chat_lock:
+                    entities = _extract_entities_cached(sanitized, path, _content_hash)
             except Exception as e:
                 log.warning(f"Entity extraction failed for {path}: {e}")
         entities_str = ""
@@ -388,7 +412,8 @@ def _index_note(path: str, content: str | None = None, *, embed_workers: int = 1
         summary = ""
         if not SKIP_SUMMARIES:
             try:
-                summary = _generate_summary_cached(sanitized, _content_hash)
+                with _llm_chat_lock:
+                    summary = _generate_summary_cached(sanitized, _content_hash)
             except Exception as e:
                 log.warning(f"Summary generation failed for {path}: {e}")
         if entities:

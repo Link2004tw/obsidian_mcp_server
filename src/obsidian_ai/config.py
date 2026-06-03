@@ -27,7 +27,8 @@ ollama_embed_model = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 ollama_chat_model = os.getenv("OLLAMA_CHAT_MODEL", "qwen3:8b")
 
 _project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-chroma_path = os.getenv("CHROMA_PATH", os.path.join(_project_root, "data", "chroma_db"))
+data_dir = os.getenv("DATA_DIR", os.path.join(_project_root, "data"))
+chroma_path = os.getenv("CHROMA_PATH", os.path.join(data_dir, "chroma_db"))
 vault_path = os.getenv("VAULT_PATH", "")
 
 EXCLUDE_PATTERNS = ["_gsdata_", ".gsbak", ".git", "__pycache__", "node_modules", ".excalidraw.md"]

@@ -213,7 +213,7 @@ def search_by_tags(tags: list[str], n: int = 20) -> list[dict]:
     return unique
 
 
-def dedup_paths(results: list[dict]) -> list[tuple[str, str]]:
+def _dedup_paths(results: list[dict]) -> list[tuple[str, str]]:
     """Deduplicate query results by path. Returns [(path, title), ...]."""
     seen = {}
     for r in results:

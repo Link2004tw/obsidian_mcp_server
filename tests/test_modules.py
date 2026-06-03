@@ -24,13 +24,13 @@ def test_import_frontmatter():
 def test_import_chroma_store():
     from obsidian_ai.chroma_store import (
         count,
-        dedup_paths,
+        _dedup_paths,
         get_by_title,
         upsert,
     )
     assert callable(upsert)
     assert callable(count)
-    assert callable(dedup_paths)
+    assert callable(_dedup_paths)
     assert callable(get_by_title)
 
 

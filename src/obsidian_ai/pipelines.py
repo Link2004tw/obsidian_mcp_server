@@ -132,7 +132,7 @@ def retrieve(
             summary = r["metadata"].get("summary", "")
             if meta_path and summary and meta_path not in note_summaries:
                 note_summaries[meta_path] = summary
-        for path, title in chroma_store.dedup_paths(results):
+        for path, title in chroma_store._dedup_paths(results):
             semantic_scores[path] = max(semantic_scores.get(path, 0), 1.0)
 
     for path, score in semantic_scores.items():
@@ -450,7 +450,7 @@ def summarize_topic(
     return summary
 
 
-def route_query(query: str) -> str:
+def route_query(query_: str) -> str:
     """Route a user query to the appropriate tool via LLM agent.
 
     Sends the query to the LLM with the ``AGENT_SYSTEM`` prompt, which
@@ -459,7 +459,7 @@ def route_query(query: str) -> str:
 
     This avoids circular imports by lazy-importing ``mcp_server`` functions.
     """
-    log.info("route_query — %s", query)
+    log.info("route_query — %s", query_)
     try:
         from .mcp_server import (
             ask_vault, read_note, related_notes, search_entities,
@@ -468,11 +468,11 @@ def route_query(query: str) -> str:
     except Exception as e:
         log.warning("route_query — failed to import MCP tools: %s", e)
         # Fallback: use the query pipeline directly
-        return query(ask=query)
+        return query(ask=query_)
 
     messages = [
         {"role": "system", "content": AGENT_SYSTEM},
-        {"role": "user", "content": query},
+        {"role": "user", "content": query_},
     ]
     try:
         response = llm_client.chat(messages, think=False)
@@ -488,9 +488,9 @@ def route_query(query: str) -> str:
             try:
                 decision = json.loads(match.group())
             except json.JSONDecodeError:
-                decision = {"tool": "ask_vault", "params": {"question": query}}
+                decision = {"tool": "ask_vault", "params": {"question": query_}}
         else:
-            decision = {"tool": "ask_vault", "params": {"question": query}}
+            decision = {"tool": "ask_vault", "params": {"question": query_}}
 
     tool = decision.get("tool", "ask_vault")
     params = decision.get("params", {})
@@ -527,7 +527,7 @@ def route_query(query: str) -> str:
     handler = tool_map.get(tool)
     if handler is None:
         log.warning("route_query — unknown tool %s, falling back to ask_vault", tool)
-        return ask_vault(question=query)
+        return ask_vault(question=query_)
 
     try:
         result = handler(params)
@@ -537,4 +537,4 @@ def route_query(query: str) -> str:
     except Exception as e:
         log_error(log, f"route_query — tool {tool} failed", exc=e)
         # Fallback
-        return ask_vault(question=query)
+        return ask_vault(question=query_)
