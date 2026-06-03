@@ -10,6 +10,7 @@ from fastmcp import FastMCP
 from . import (
     chroma_store,
     config,
+    entity_relations,
     entity_store,
     graph_store,
     indexer,
@@ -17,6 +18,7 @@ from . import (
     llm_client,
     obsidian_client,
     pipelines,
+    ranker,
 )
 from .frontmatter import add_tags as fm_add_tags
 from .frontmatter import parse as fm_parse
@@ -426,21 +428,59 @@ def _apply_entity_search(
     query: str,
     entity_types: list[str] | None = None,
     where: dict | None = None,
+    force: bool = False,
+    expand_entities: bool = False,
 ) -> list[dict]:
-    """Expand results by looking up entities matching the query.
+    """Expand results by auto-detecting entities in the query.
 
-    Queries the entity store for the query text. For each matching entity,
-    adds all notes that mention it. Merges with existing passages,
-    deduplicating by path and keeping the higher score.
+    Uses ``ranker._auto_detect_entities`` to check if the query mentions
+    any known entity (by full string, individual words, or bigrams).
+    If *force* is True, also runs the broader ``entity_store.search()``
+    even when no word-level match is found.
+
+    If *expand_entities* is True, when entities are auto-detected, also
+    fetches related entities via the entity-relationship graph and
+    searches for those as well.
+
+    Merges results with existing passages, deduplicating by path and
+    keeping the higher score.
     """
-    entity_results = entity_store.search(query)
+    entity_results = ranker._auto_detect_entities(query)
+
+    if force:
+        explicit = entity_store.search(query)
+        seen = {r["path"] for r in entity_results}
+        for r in explicit:
+            if r["path"] not in seen:
+                entity_results.append(r)
+
+    # Relationship expansion: find entities related to detected ones
+    expand_names: list[str] = []
+    if expand_entities and entity_results:
+        try:
+            expand_names = ranker._expand_entity_names(entity_results)
+        except Exception as exc:
+            log.warning("_apply_entity_search — entity expansion failed: %s", exc)
+
+    if expand_names:
+        log.info("_apply_entity_search — expanded with related entities: %s", expand_names)
+        seen_paths = {r["path"] for r in entity_results}
+        for ename in expand_names:
+            try:
+                expanded_results = entity_store.search(ename)
+                for r in expanded_results:
+                    if r["path"] not in seen_paths:
+                        seen_paths.add(r["path"])
+                        entity_results.append(r)
+            except Exception as exc:
+                log.warning("_apply_entity_search — related search for %s failed: %s", ename, exc)
+
     if not entity_results:
         return passages
 
     if entity_types:
         entity_results = [r for r in entity_results if r["entity_type"] in entity_types]
 
-    # Index existing passages by path for fast dedup
     existing = {p["path"]: p for p in passages}
 
     added = 0
@@ -538,6 +578,7 @@ def search_notes(
     use_entities: bool = False,
     entity_types: list[str] | None = None,
     group_by_note: bool = False,
+    expand_entities: bool = False,
 ) -> list[dict]:
     """Search notes semantically with optional metadata filters.
 
@@ -568,6 +609,8 @@ def search_notes(
     - ``use_entities`` — if True, also search the entity index for notes matching the query entity name
     - ``entity_types`` — optional list of entity types to filter by (e.g. ``["Person"]``)
     - ``group_by_note`` — if True, collapse chunk-level results into note-level (default False)
+    - ``expand_entities`` — if True, when entities are auto-detected in the
+      query, also search for related entities via the relationship graph
 
     Returns:
         Passage-level results (default) or note-level results (when ``group_by_note=True``).
@@ -575,10 +618,10 @@ def search_notes(
         and when grouped: ``chunk_count`` (how many chunks matched this note).
     """
     log.info(
-        "search_notes — query=%s, n=%s, tags=%s, exclude_tags=%s, folder=%s, date_after=%s, date_before=%s, expand=%s, kw_weight=%s, min_sim=%s, div_penalty=%s, use_graph=%s, graph_depth=%s, graph_weight=%s, use_entities=%s, entity_types=%s, group_by_note=%s",
+        "search_notes — query=%s, n=%s, tags=%s, exclude_tags=%s, folder=%s, date_after=%s, date_before=%s, expand=%s, kw_weight=%s, min_sim=%s, div_penalty=%s, use_graph=%s, graph_depth=%s, graph_weight=%s, use_entities=%s, entity_types=%s, group_by_note=%s, expand_entities=%s",
         query, n, tags, exclude_tags, folder, date_after, date_before,
         expand_query, keyword_weight, min_similarity, diversity_penalty,
-        use_graph, graph_depth, graph_weight, use_entities, entity_types, group_by_note,
+        use_graph, graph_depth, graph_weight, use_entities, entity_types, group_by_note, expand_entities,
     )
     try:
         where = _build_search_where(tags=tags, folder=folder, date_after=date_after, date_before=date_before)
@@ -599,9 +642,13 @@ def search_notes(
             exclude_tags=exclude_tags,
         )
 
-        # Entity-augmented expansion
-        if use_entities:
-            passages = _apply_entity_search(passages, query, entity_types=entity_types)
+        # Entity-augmented expansion (auto-detects entities in query)
+        passages = _apply_entity_search(
+            passages, query,
+            entity_types=entity_types,
+            force=use_entities,
+            expand_entities=expand_entities,
+        )
 
         # Graph-augmented expansion
         if use_graph and passages:
@@ -1007,6 +1054,7 @@ def ask_vault(
     entity_types: list[str] | None = None,
     keyword_weight: float = 0.0,
     expand_query: bool = False,
+    expand_entities: bool = False,
 ) -> str:
     """Ask a question about your Obsidian vault. Searches relevant notes and uses LLM to answer.
 
@@ -1022,10 +1070,12 @@ def ask_vault(
         entity_types: optional list of entity types to filter by (e.g. ``["Person"]``).
         keyword_weight: blend ratio for BM25 keyword search (0.0 = pure semantic, 1.0 = pure keyword).
         expand_query: if True, use the LLM to generate alternative query phrasings for broader search.
+        expand_entities: if True, when entities are auto-detected in the
+            query, also search for related entities via the relationship graph.
     """
     log.info(
-        "ask_vault — question=%s, top_k=%s, use_graph=%s, graph_depth=%s, use_entities=%s, entity_types=%s, keyword_weight=%s, expand_query=%s",
-        question, top_k, use_graph, graph_depth, use_entities, entity_types, keyword_weight, expand_query,
+        "ask_vault — question=%s, top_k=%s, use_graph=%s, graph_depth=%s, use_entities=%s, entity_types=%s, keyword_weight=%s, expand_query=%s, expand_entities=%s",
+        question, top_k, use_graph, graph_depth, use_entities, entity_types, keyword_weight, expand_query, expand_entities,
     )
     try:
         answer = pipelines.query(
@@ -1033,6 +1083,7 @@ def ask_vault(
             use_graph=use_graph, graph_depth=graph_depth,
             use_entities=use_entities, entity_types=entity_types,
             keyword_weight=keyword_weight, expand_query=expand_query,
+            expand_entities=expand_entities,
         )
         log.info(f"ask_vault — done, {len(answer)} chars")
         return answer
@@ -1053,6 +1104,7 @@ def retrieve_notes(
     keyword_weight: float = 0.0,
     min_similarity: float | None = None,
     expand_query: bool = False,
+    expand_entities: bool = False,
 ) -> list[dict]:
     """Multi-strategy retrieval pipeline combining semantic search, entity lookup,
     and wiki-link graph traversal into a single unified result set.
@@ -1071,6 +1123,8 @@ def retrieve_notes(
         keyword_weight: BM25 keyword blend, 0.0-1.0 (0.0 = pure semantic, 1.0 = pure keyword).
         min_similarity: minimum similarity score threshold (0-1). Results below are filtered out.
         expand_query: if True, use LLM to expand the query with synonyms for broader search.
+        expand_entities: if True, when entities are auto-detected in the
+            query, also search for related entities via the relationship graph.
 
     Returns:
         A list of dicts, each with:
@@ -1081,8 +1135,8 @@ def retrieve_notes(
         - ``matched_by`` — list of strategies that found this note (e.g. ``["semantic", "entity"]``)
     """
     log.info(
-        "retrieve_notes — query=%s, top_k=%s, use_graph=%s, graph_depth=%s, graph_weight=%s, use_entities=%s, entity_types=%s, keyword_weight=%s, min_similarity=%s, expand_query=%s",
-        query, top_k, use_graph, graph_depth, graph_weight, use_entities, entity_types, keyword_weight, min_similarity, expand_query,
+        "retrieve_notes — query=%s, top_k=%s, use_graph=%s, graph_depth=%s, graph_weight=%s, use_entities=%s, entity_types=%s, keyword_weight=%s, min_similarity=%s, expand_query=%s, expand_entities=%s",
+        query, top_k, use_graph, graph_depth, graph_weight, use_entities, entity_types, keyword_weight, min_similarity, expand_query, expand_entities,
     )
     try:
         result = pipelines.retrieve(
@@ -1090,7 +1144,7 @@ def retrieve_notes(
             use_graph=use_graph, graph_depth=graph_depth, graph_weight=graph_weight,
             use_entities=use_entities, entity_types=entity_types,
             keyword_weight=keyword_weight, min_similarity=min_similarity,
-            expand_query=expand_query,
+            expand_query=expand_query, expand_entities=expand_entities,
         )
         notes = result["notes"] if result else []
         log.info("retrieve_notes — %s notes returned", len(notes))
@@ -1132,6 +1186,7 @@ def summarize_topic(
     entity_types: list[str] | None = None,
     keyword_weight: float = 0.0,
     expand_query: bool = False,
+    expand_entities: bool = False,
 ) -> str:
     """Search all notes related to a topic and return an LLM-generated consolidated summary.
 
@@ -1148,13 +1203,15 @@ def summarize_topic(
         entity_types: optional list of entity types to filter by (e.g. ``["Person"]``).
         keyword_weight: BM25 keyword blend, 0.0-1.0 (0.0 = pure semantic, 1.0 = pure keyword).
         expand_query: if True, use LLM to expand the query with synonyms for broader search.
+        expand_entities: if True, when entities are auto-detected in the
+            query, also search for related entities via the relationship graph.
 
     Returns:
         An LLM-generated summary of the topic across related notes.
     """
     log.info(
-        "summarize_topic — topic=%s, top_k=%s, use_graph=%s, graph_depth=%s, graph_weight=%s, use_entities=%s, entity_types=%s, keyword_weight=%s, expand_query=%s",
-        topic, top_k, use_graph, graph_depth, graph_weight, use_entities, entity_types, keyword_weight, expand_query,
+        "summarize_topic — topic=%s, top_k=%s, use_graph=%s, graph_depth=%s, graph_weight=%s, use_entities=%s, entity_types=%s, keyword_weight=%s, expand_query=%s, expand_entities=%s",
+        topic, top_k, use_graph, graph_depth, graph_weight, use_entities, entity_types, keyword_weight, expand_query, expand_entities,
     )
     try:
         result = pipelines.summarize_topic(
@@ -1162,6 +1219,7 @@ def summarize_topic(
             use_graph=use_graph, graph_depth=graph_depth, graph_weight=graph_weight,
             use_entities=use_entities, entity_types=entity_types,
             keyword_weight=keyword_weight, expand_query=expand_query,
+            expand_entities=expand_entities,
         )
         log.info(f"summarize_topic — done, {len(result)} chars")
         return result
@@ -1318,6 +1376,117 @@ def get_entity_types() -> list[str]:
         List of entity type strings.
     """
     return entity_store.entity_types()
+
+
+@mcp.tool()
+def get_entity_aliases(name: str) -> str:
+    """Return all alias information for a given entity.
+
+    Shows canonical name, entity type, alias list (both LLM-generated
+    and manual), and total mention count across the vault.
+
+    Args:
+        name: entity name — canonical or alias (e.g. ``"Maria"`` or ``"Her"``).
+
+    Returns:
+        A formatted string with canonical name, type, aliases, and mention count,
+        or an error message if the entity is not found.
+    """
+    log.info(f"get_entity_aliases — {name}")
+    try:
+        result = entity_store.get_aliases(name)
+        if result is None:
+            return f"Entity not found: {name}"
+        aliases = result.get("aliases", [])
+        alias_str = ", ".join(aliases) if aliases else "(none)"
+        lines = [
+            f"Canonical: {result['canonical']}",
+            f"Type:      {result['type']}",
+            f"Aliases:   {alias_str}",
+            f"Mentions:  {result['mention_count']}",
+        ]
+        return "\n".join(lines)
+    except Exception as e:
+        log_error(log, "get_entity_aliases FAILED", exc=e, name=name)
+        return f"Error: {e}"
+
+
+@mcp.tool()
+def merge_entities(primary: str, secondary: str) -> str:
+    """Merge two entity records, keeping *primary* as the canonical name.
+
+    Combines mention lists, merges aliases, and removes the secondary
+    entity record. Useful for cleaning up duplicate entities or merging
+    variants that weren't auto-detected as aliases.
+
+    Args:
+        primary: the entity name to keep (canonical).
+        secondary: the entity name to merge into primary and then delete.
+
+    Returns:
+        Confirmation message with merged entity details, or an error.
+    """
+    log.info(f"merge_entities — primary={primary}, secondary={secondary}")
+    try:
+        result = entity_store.merge(primary, secondary)
+        if result is None:
+            return f"Could not merge — one or both entities not found: primary=\"{primary}\", secondary=\"{secondary}\""
+        alias_str = ", ".join(result["aliases"]) if result["aliases"] else "(none)"
+        lines = [
+            f"Merged \"{secondary}\" → \"{primary}\"",
+            f"Canonical: {result['canonical']}",
+            f"Type:      {result['type']}",
+            f"Aliases:   {alias_str}",
+            f"Mentions:  {result['mention_count']}",
+        ]
+        return "\n".join(lines)
+    except Exception as e:
+        log_error(log, "merge_entities FAILED", exc=e, primary=primary, secondary=secondary)
+        return f"Error: {e}"
+
+
+@mcp.tool()
+def related_entities(
+    name: str,
+    relation_type: str | None = None,
+    depth: int = 1,
+) -> str:
+    """Find entities related to a given entity via the relationship graph.
+
+    Traverses the entity-relationship graph between entity records in
+    the knowledge index. Relationships are extracted during note indexing
+    and include types like ``works_on``, ``uses``, ``part_of``,
+    ``located_in``, ``attends``, ``created_by``, and ``related_to``.
+
+    Args:
+        name: entity name (e.g. ``"Alice Johnson"``, ``"ESP32"``).
+        relation_type: optional filter — only return relationships of
+            this type. Supported types: ``works_on``, ``uses``,
+            ``part_of``, ``related_to``, ``created_by``, ``located_in``,
+            ``attends``. Pass ``null`` or omit for all types.
+        depth: maximum traversal depth (default 1, meaning direct
+            relationships only). Depth 2 follows relationships one hop
+            further. Use depth 3+ for broader exploration.
+
+    Returns:
+        A formatted table of related entities with relationship type,
+        confidence, and hop depth, or a message if none are found.
+    """
+    log.info(f"related_entities — name={name}, type={relation_type}, depth={depth}")
+    try:
+        results = entity_relations.get_related(name, relation_type=relation_type, depth=depth)
+        if not results:
+            return f"No related entities found for \"{name}\""
+        lines = [f"Entities related to \"{name}\" (depth={depth}):"]
+        for r in results:
+            kind = r.get("relation_type", "?")
+            conf = r.get("confidence", 0.0)
+            d = r.get("depth", 1)
+            lines.append(f"  • {r['entity_name']}  [{kind}]  conf={conf:.2f}  depth={d}")
+        return "\n".join(lines)
+    except Exception as e:
+        log_error(log, "related_entities FAILED", exc=e, name=name)
+        return f"Error: {e}"
 
 
 # ── Graph RAG Tools ──────────────────────────────────────────────────
@@ -2015,6 +2184,53 @@ def ask_vault_about_todos(query: str) -> str:
     except Exception as e:
         log_error(log, "ask_vault_about_todos FAILED", exc=e)
         return f"Error: {e}"
+
+
+@mcp.tool()
+def get_ranking_weights() -> str:
+    """Return the current ranking weights used by the unified Ranker.
+
+    The Ranker blends four signals: semantic, entity, graph, and keyword.
+    Weights are normalised to sum to 1.0.
+
+    Returns:
+        A formatted string showing each signal's weight.
+    """
+    log.info("get_ranking_weights")
+    w = ranker.weights()
+    max_k = max(len(k) for k in w)
+    lines = [f"{k.rjust(max_k)}: {v:.2f}" for k, v in sorted(w.items())]
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def set_ranking_weights(
+    semantic: float | None = None,
+    entity: float | None = None,
+    graph: float | None = None,
+    keyword: float | None = None,
+) -> str:
+    """Set ranking weights for the unified Ranker at runtime.
+
+    The Ranker blends four signals: semantic, entity, graph, and keyword.
+    Only the weights you specify are updated; others keep their current value.
+    Weights are automatically normalised to sum to 1.0 internally.
+
+    Args:
+        semantic: weight for semantic (embedding) similarity (0.0-1.0).
+        entity: weight for entity-index matching (0.0-1.0).
+        graph: weight for wiki-link graph proximity (0.0-1.0).
+        keyword: weight for BM25 keyword search (0.0-1.0).
+
+    Returns:
+        A formatted string showing the updated weights.
+    """
+    log.info("set_ranking_weights — semantic=%s, entity=%s, graph=%s, keyword=%s",
+             semantic, entity, graph, keyword)
+    w = ranker.set_weights(semantic=semantic, entity=entity, graph=graph, keyword=keyword)
+    max_k = max(len(k) for k in w)
+    lines = [f"{k.rjust(max_k)}: {v:.2f}" for k, v in sorted(w.items())]
+    return "Updated ranking weights:\n" + "\n".join(lines)
 
 
 @mcp.tool()

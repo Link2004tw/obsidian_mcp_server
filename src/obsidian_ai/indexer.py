@@ -10,6 +10,7 @@ import time
 from . import (
     chroma_store,
     config,
+    entity_relations,
     entity_store,
     graph_store,
     llm_client,
@@ -28,8 +29,8 @@ ENTITY_CACHE_PATH = os.path.join(config.data_dir, "entity_cache.json")
 SUMMARY_CACHE_PATH = os.path.join(config.data_dir, "summary_cache.json")
 MTIME_MAP_PATH = os.path.join(config.data_dir, "mtime_map.json")
 
-# Persistent entity cache: content_hash -> list[dict] (shared across threads).
-_entity_cache: dict[str, list[dict]] = {}
+# Persistent entity cache: content_hash -> tuple[list[dict], list[dict]] (entities, relationships).
+_entity_cache: dict[str, tuple[list[dict], list[dict]]] = {}
 _entity_cache_lock = threading.Lock()
 
 # Persistent summary cache: content_hash -> str
@@ -57,15 +58,27 @@ SUMMARY_SYSTEM = (
 EXTRACT_AND_SUMMARIZE_SYSTEM = (
     "You are an assistant that extracts entities AND generates a summary from a note. "
     "Return ONLY valid JSON with this exact structure:\n"
-    '{"entities": [{"name": str, "type": str, "confidence": float}], "summary": str}\n'
+    '{"entities": [{"name": str, "type": str, "confidence": float, "aliases": [str]}], '
+    '"relationships": [{"source": str, "type": str, "target": str, "confidence": float}], '
+    '"summary": str}\n'
     "Entity types: Person, Project, Hardware, Technology, Location, Concept, Event.\n"
+    "Relationship types: works_on, uses, part_of, related_to, created_by, located_in, attends.\n"
     "Rules for entities:\n"
     "- Extract full names for people (e.g. \"Alice Johnson\" not just \"Alice\").\n"
     "- Use the most specific type (e.g. \"ESP32\" is Hardware, not Technology).\n"
     "- Confidence 0.0-1.0: 0.9+ for explicit mentions, 0.7 for inferred, 0.5 for vague.\n"
     "- Include project names, code/library names, hardware platforms, locations, dates/events.\n"
     "- Ignore common English words, markdown formatting, and non-entity proper nouns.\n"
+    "- For each entity, suggest 1-3 aliases: alternative names, short forms, or pronouns "
+    "(e.g. \"ESP32\" → [\"ESP-32\", \"esp32 chip\"], \"Alice Johnson\" → [\"Alice\", \"Aj\"]). "
+    "Return an empty list if no aliases apply.\n"
     "- Return an empty list if no entities are found.\n"
+    "Rules for relationships:\n"
+    "- Extract meaningful connections between entities mentioned in the note.\n"
+    "- Each relationship must link two entities that both appear in the entities list.\n"
+    "- Use the standard relationship type that best fits the connection.\n"
+    "- Confidence 0.0-1.0: 0.9+ for explicit statements, 0.7 for strong implication, 0.5 for weak connection.\n"
+    "- Return an empty list if no relationships are found.\n"
     "Rules for summary:\n"
     "- Produce a concise 1-2 sentence summary capturing the key information.\n"
     "- Be factual, specific, and use the same language as the original note.\n"
@@ -119,21 +132,29 @@ def _save_mtime_map(m: dict[str, float]) -> None:
         log.warning(f"Failed to save mtime map: {e}")
 
 
-def _load_entity_cache() -> dict[str, list[dict]]:
+def _load_entity_cache() -> dict[str, tuple[list[dict], list[dict]]]:
+    """Load entity cache from disk. Handles old format (just entities) for backward compat."""
+    result: dict[str, tuple[list[dict], list[dict]]] = {}
     try:
         if os.path.isfile(ENTITY_CACHE_PATH):
             with open(ENTITY_CACHE_PATH, encoding="utf-8") as f:
-                return dict(json.load(f))
+                raw = dict(json.load(f))
+            for key, val in raw.items():
+                if isinstance(val, list) and len(val) == 2 and isinstance(val[1], list):
+                    result[key] = (val[0], val[1])
+                elif isinstance(val, list):
+                    result[key] = (val, [])
     except Exception as e:
         log.warning(f"Failed to load entity cache: {e}")
-    return {}
+    return result
 
 
-def _save_entity_cache(cache: dict[str, list[dict]]) -> None:
+def _save_entity_cache(cache: dict[str, tuple[list[dict], list[dict]]]) -> None:
     try:
         os.makedirs(os.path.dirname(ENTITY_CACHE_PATH), exist_ok=True)
+        serializable = {k: [v[0], v[1]] for k, v in cache.items()}
         with open(ENTITY_CACHE_PATH, "w", encoding="utf-8") as f:
-            json.dump(cache, f, indent=2, sort_keys=True, ensure_ascii=False)
+            json.dump(serializable, f, indent=2, sort_keys=True, ensure_ascii=False)
     except Exception as e:
         log.warning(f"Failed to save entity cache: {e}")
 
@@ -190,8 +211,11 @@ def _generate_summary_cached(sanitized: str, content_hash: str | None) -> str:
     raise last_exc  # type: ignore[misc]
 
 
-def _extract_entities_cached(sanitized: str, path: str, content_hash: str | None) -> list[dict]:
-    """Extract entities with a persistent cache by content hash. Thread-safe."""
+def _extract_entities_cached(sanitized: str, path: str, content_hash: str | None) -> tuple[list[dict], list[dict]]:
+    """Extract entities and relationships with a persistent cache by content hash. Thread-safe.
+
+    Returns ``(entities, relationships)``.
+    """
     if content_hash:
         with _entity_cache_lock:
             cached = _entity_cache.get(content_hash)
@@ -201,11 +225,11 @@ def _extract_entities_cached(sanitized: str, path: str, content_hash: str | None
     last_exc: Exception | None = None
     for attempt in range(3):
         try:
-            entities = pipelines.extract_entities(sanitized, path=path)
+            entities, relationships = pipelines.extract_entities(sanitized, path=path)
             if content_hash:
                 with _entity_cache_lock:
-                    _entity_cache[content_hash] = entities
-            return entities
+                    _entity_cache[content_hash] = (entities, relationships)
+            return entities, relationships
         except Exception as e:
             last_exc = e
             if attempt < 2:
@@ -240,32 +264,32 @@ def _save_combined_cache(cache: dict[str, dict]) -> None:
         log.warning(f"Failed to save combined cache: {e}")
 
 
-def _extract_and_summarize_cached(sanitized: str, path: str, content_hash: str | None) -> tuple[list[dict], str]:
-    """Extract entities AND generate a summary in a single LLM call. Thread-safe.
+def _extract_and_summarize_cached(sanitized: str, path: str, content_hash: str | None) -> tuple[list[dict], list[dict], str]:
+    """Extract entities, relationships, AND generate a summary in a single LLM call. Thread-safe.
 
-    Returns (entities, summary). Results are cached by content_hash.
+    Returns ``(entities, relationships, summary)``. Results are cached by content_hash.
     Falls back to separate calls if SKIP_ENTITIES or SKIP_SUMMARIES is set.
     """
     if content_hash:
         with _COMBINED_CACHE_LOCK:
             cached = _COMBINED_CACHE.get(content_hash)
         if cached is not None:
-            return cached.get("entities", []), cached.get("summary", "")
+            return cached.get("entities", []), cached.get("relationships", []), cached.get("summary", "")
 
     skip_entities_ = SKIP_ENTITIES
     skip_summaries_ = SKIP_SUMMARIES
 
     # If both are skipped, nothing to do
     if skip_entities_ and skip_summaries_:
-        return [], ""
+        return [], [], ""
 
     # If only one is skipped, fall back to the existing single-purpose functions
     if skip_entities_:
         summary = _generate_summary_cached(sanitized, content_hash) if not skip_summaries_ else ""
-        return [], summary
+        return [], [], summary
     if skip_summaries_:
-        entities = _extract_entities_cached(sanitized, path, content_hash)
-        return entities, ""
+        entities, relationships = _extract_entities_cached(sanitized, path, content_hash)
+        return entities, relationships, ""
 
     for attempt in range(3):
         try:
@@ -282,6 +306,7 @@ def _extract_and_summarize_cached(sanitized: str, path: str, content_hash: str |
                 data = json.loads(match.group()) if match else {}
 
             raw_entities = data.get("entities", []) if isinstance(data, dict) else []
+            raw_relationships = data.get("relationships", []) if isinstance(data, dict) else []
             summary = str(data.get("summary", "")) if isinstance(data, dict) else ""
 
             # Validate entities
@@ -300,10 +325,33 @@ def _extract_and_summarize_cached(sanitized: str, path: str, content_hash: str |
                 confidence = max(0.0, min(1.0, confidence))
                 entities.append({"name": name, "type": ent_type, "confidence": confidence})
 
+            # Validate relationships
+            relationships = []
+            for rel in raw_relationships:
+                if not isinstance(rel, dict):
+                    continue
+                source = str(rel.get("source", "")).strip()
+                target = str(rel.get("target", "")).strip()
+                rtype = str(rel.get("type", "related_to")).strip()
+                conf = float(rel.get("confidence", 0.5))
+                if not source or not target:
+                    continue
+                conf = max(0.0, min(1.0, conf))
+                relationships.append({
+                    "source": source,
+                    "type": rtype,
+                    "target": target,
+                    "confidence": round(conf, 4),
+                })
+
             if content_hash:
                 with _COMBINED_CACHE_LOCK:
-                    _COMBINED_CACHE[content_hash] = {"entities": entities, "summary": summary}
-            return entities, summary
+                    _COMBINED_CACHE[content_hash] = {
+                        "entities": entities,
+                        "relationships": relationships,
+                        "summary": summary,
+                    }
+            return entities, relationships, summary
         except Exception as e:
             if attempt < 2:
                 wait = 2 ** attempt
@@ -312,16 +360,16 @@ def _extract_and_summarize_cached(sanitized: str, path: str, content_hash: str |
 
     # Fallback: try separate calls if combined fails entirely
     log.warning(f"Combined extract+summarize failed for {path}, falling back to separate calls")
-    entities, summary = [], ""
+    entities, relationships, summary = [], [], ""
     try:
-        entities = _extract_entities_cached(sanitized, path, content_hash)
+        entities, relationships = _extract_entities_cached(sanitized, path, content_hash)
     except Exception as e:
         log.warning(f"Entity extraction fallback failed for {path}: {e}")
     try:
         summary = _generate_summary_cached(sanitized, content_hash)
     except Exception as e:
         log.warning(f"Summary generation fallback failed for {path}: {e}")
-    return entities, summary
+    return entities, relationships, summary
 
 
 def _embed_workers_for_current_machine() -> int:
@@ -564,9 +612,10 @@ def _index_note(path: str, content: str | None = None, *,
         summary = ""
         try:
             with _llm_chat_lock:
-                entities, summary = _extract_and_summarize_cached(sanitized, path, _content_hash)
+                entities, relationships, summary = _extract_and_summarize_cached(sanitized, path, _content_hash)
         except Exception as e:
             log.warning(f"Entity/summary extraction failed for {path}: {e}")
+            relationships = []
         entities_str = ""
         if entities:
             serialised = ",".join(f"{e['type']}:{e['name']}" for e in entities)
@@ -579,6 +628,17 @@ def _index_note(path: str, content: str | None = None, *,
                     path=path,
                     chunk_idx=0,
                     context=sanitized[:200],
+                    aliases=ent.get("aliases"),
+                )
+
+        if relationships:
+            for rel in relationships:
+                entity_relations.add(
+                    source=rel["source"],
+                    type=rel["type"],
+                    target=rel["target"],
+                    confidence=rel.get("confidence", 0.5),
+                    source_note=path,
                 )
 
         title = fm_fields.pop("fm_title", None) or os.path.splitext(os.path.basename(path))[0]
@@ -647,9 +707,10 @@ def run_index():
 
     log.info(f"Starting index — {len(notes)} notes found")
 
-    # Reset entity store (skip if user opted out of entity extraction)
+    # Reset entity store and relationship store (skip if user opted out of entity extraction)
     if not SKIP_ENTITIES:
         entity_store.clear()
+        entity_relations.clear()
 
     # Load stored content hashes for incremental skip
     hash_map = _load_hash_map()
@@ -851,6 +912,8 @@ def run_index():
     log.info(f"Mtime map saved — {len(mtime_map)} entries")
     entity_store.save()
     log.info(f"Entity store saved — {entity_store.stats()['total_entities']} entities")
+    entity_relations.save()
+    log.info(f"Entity relationships saved — {entity_relations.stats()['total_relationships']} relationships")
     _save_entity_cache(_entity_cache)
     log.info(f"Entity cache saved — {len(_entity_cache)} entries")
     _save_summary_cache(_summary_cache)

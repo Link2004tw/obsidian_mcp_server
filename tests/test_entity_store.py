@@ -179,3 +179,96 @@ def test_case_insensitive_search():
         assert len(results) == 1
     finally:
         os.unlink(path)
+
+
+def test_add_with_aliases_param():
+    store, path = _make_store()
+    try:
+        store.add("Maria", "Person", 0.95, "note1.md",
+                  aliases=["Her", "The girl from church", "M"])
+        result = store.search("Maria")
+        assert len(result) == 1
+
+        record = store._data["maria"]
+        assert "Her" in record["aliases"]
+        assert "The girl from church" in record["aliases"]
+    finally:
+        os.unlink(path)
+
+
+def test_search_by_alias():
+    store, path = _make_store()
+    try:
+        store.add("ESP32", "Hardware", 0.95, "note1.md",
+                  aliases=["ESP-32", "esp32 chip"])
+        # Searching by alias should find the canonical entity
+        results = store.search("ESP-32")
+        assert len(results) == 1
+        assert results[0]["entity_name"] == "ESP32"
+        assert results[0]["path"] == "note1.md"
+
+        # Searching by another alias
+        results = store.search("esp32 chip")
+        assert len(results) == 1
+        assert results[0]["entity_name"] == "ESP32"
+    finally:
+        os.unlink(path)
+
+
+def test_get_aliases():
+    store, path = _make_store()
+    try:
+        store.add("Alice", "Person", 0.95, "note1.md",
+                  aliases=["Ali", "A. Johnson"])
+        result = store.get_aliases("Alice")
+        assert result is not None
+        assert result["canonical"] == "Alice"
+        assert result["type"] == "Person"
+        assert "Ali" in result["aliases"]
+        assert result["mention_count"] == 1
+
+        # Lookup by alias should also work
+        result2 = store.get_aliases("Ali")
+        assert result2 is not None
+        assert result2["canonical"] == "Alice"
+
+        # Nonexistent entity
+        assert store.get_aliases("Nobody") is None
+    finally:
+        os.unlink(path)
+
+
+def test_merge_entities():
+    store, path = _make_store()
+    try:
+        store.add("ESP32", "Hardware", 0.95, "note1.md")
+        store.add("ESP-32", "Hardware", 0.85, "note2.md",
+                  aliases=["esp32 module"])
+
+        # Before merge: separate entities
+        assert len(store.search("ESP32")) == 1
+        assert len(store.search("ESP-32")) == 1
+
+        result = store.merge("ESP32", "ESP-32")
+        assert result is not None
+        assert result["canonical"] == "ESP32"
+        assert result["mention_count"] == 2
+        assert "ESP-32" in result["aliases"]
+
+        # After merge: both paths found via canonical name
+        merged = store.search("ESP32")
+        assert len(merged) == 2
+        paths = {r["path"] for r in merged}
+        assert paths == {"note1.md", "note2.md"}
+
+        # Old secondary key should now redirect to primary via alias map
+        redirected = store.search("ESP-32")
+        assert len(redirected) == 2
+
+        # Merging same entity should return None
+        assert store.merge("ESP32", "ESP32") is None
+
+        # Merging nonexistent entity should return None
+        assert store.merge("ESP32", "Nonexistent") is None
+    finally:
+        os.unlink(path)

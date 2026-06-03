@@ -31,7 +31,8 @@ data_dir = os.getenv("DATA_DIR", os.path.join(_project_root, "data"))
 chroma_path = os.getenv("CHROMA_PATH", os.path.join(data_dir, "chroma_db"))
 vault_path = os.getenv("VAULT_PATH", "")
 
-EXCLUDE_PATTERNS = ["_gsdata_", ".gsbak", ".git", "__pycache__", "node_modules", ".excalidraw.md"]
+EXCLUDE_PATTERNS = ["_gsdata_", ".gsbak", ".git", "__pycache__", "node_modules", ".excalidraw.md", ".github"]
+entity_aliases_file = os.getenv("ENTITY_ALIASES_FILE", "")
 todo_file = os.getenv("TODO_FILE", "todos.md")
 
 # Indexer tuning constants
@@ -42,6 +43,15 @@ embed_worker_floor = 2
 embed_worker_ceil = 6
 read_workers = int(os.getenv("READ_WORKERS", "6"))
 llm_chat_concurrency = int(os.getenv("LLM_CHAT_CONCURRENCY", "2"))
+
+# Ranking weights for the unified Ranker (semantic, entity, graph, keyword)
+# Sum does not need to be 1.0 — the Ranker normalises them internally.
+ranking_weights = {
+    "semantic": float(os.getenv("RANKING_SEMANTIC", "0.40")),
+    "entity": float(os.getenv("RANKING_ENTITY", "0.30")),
+    "graph": float(os.getenv("RANKING_GRAPH", "0.20")),
+    "keyword": float(os.getenv("RANKING_KEYWORD", "0.10")),
+}
 
 
 def validate(verbose: bool = True) -> list[str]:

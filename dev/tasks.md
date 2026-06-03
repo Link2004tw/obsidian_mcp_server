@@ -259,24 +259,74 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | 16.10 | Add type annotations to key modules                    | Add function signatures and return types to `graph_store.py`, `entity_store.py`, `keyword_search.py` — start with modules that have zero type coverage              | Low        | P3       | ✅     |
 | **Phase 16 Total**                                        | **10**      | **1**     | **6**     | **3**     | **10**    | **0**         |
 
+---
+
+## Phase 17 — Entity Resolution & Relationships
+
+| #    | Task                                                  | Description                                                                                                                                                                                 | Difficulty | Priority | Status |
+| ---- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------- | ------ |
+| 17.1 | LLM-generated aliases during indexing                  | During entity extraction, prompt the LLM to also suggest aliases (e.g., "Maria → The girl from church, Her"); store in `aliases` array in entity store                                       | Medium     | P2       | ❌     |
+| 17.2 | Manual alias support (`entity_aliases.json`)           | Create `data/entity_aliases.json` for user-defined aliases; load and merge into entity store on startup/index; takes precedence over auto-aliases                                           | Low        | P2       | ❌     |
+| 17.3 | `get_entity_aliases` MCP tool                          | Return all aliases for a given entity — both LLM-generated and manual; show canonical name, type, and alias list                                                                             | Low        | P3       | ❌     |
+| 17.4 | `merge_entities` MCP tool                              | Merge two entity records into one: combine mentions lists, keep canonical name from primary, merge aliases, and rebuild inverted index; deduplicate paths                                    | Medium     | P2       | ❌     |
+| 17.5 | Entity-relationship extraction pipeline                | During indexing, prompt the LLM to extract entity-to-entity relationships (person→project, project→technology, etc.); store as relationship graph in `data/entity_relations.json`              | High       | P2       | ✅     |
+| 17.6 | Entity relationship store + graph traversal            | Build adjacency structure for entity relationships; implement BFS traversal for related entities; support relationship type filtering                                                        | Medium     | P2       | ✅     |
+| 17.7 | `related_entities` MCP tool                            | Given an entity name, return all entities related to it via the relationship graph, with relationship type and strength; optional depth parameter for multi-hop traversal                    | Medium     | P2       | ✅     |
+| 17.8 | Entity timeline extraction                             | Extract temporal references (dates, events, life stages) for entities during indexing; store as timeline entries in entity store                                                              | Medium     | P3       | ❌     |
+| 17.9 | `entity_timeline` MCP tool                             | Given an entity name, return a chronological list of events/mentions with timestamps, note references, and context snippets; supports date range filtering                                   | Low        | P3       | ❌     |
+
+---
+
+## Phase 18 — Retrieval Quality & Evaluation
+
+| #    | Task                                                       | Description                                                                                                                                                                                 | Difficulty | Priority | Status |
+| ---- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------- | ------ |
+| 18.1 | Summary embeddings collection in ChromaDB                   | Create a dedicated ChromaDB collection for note summaries; during indexing, embed summaries and store them with path + title metadata                                                         | Medium     | P2       | ❌     |
+| 18.2 | Summary-first retrieval pipeline                            | Before chunk-level search, query the summary collection first; if a summary matches above threshold, return the note; fall back to chunk-level if summary search is insufficient              | High       | P2       | ❌     |
+| 18.3 | Automatic entity detection in user queries                  | Before semantic search, check if the query matches an entity name + aliases; if so, inject entity results into the retrieval pipeline automatically (not via opt-in `use_entities` flag)      | Medium     | P1       | ✅     |
+| 18.4 | Query-time entity expansion                                 | When query matches an entity, expand retrieval using linked entities from the entity-relationship graph; merge results with semantic + keyword scores                                        | Medium     | P2       | ✅     |
+| 18.5 | Unified configurable ranking pipeline                       | Create a central `Ranker` class/module that takes tunable weights for all 4 signals (semantic, entity, graph, keyword) and normalizes scores before blending; replace ad-hoc scoring         | High       | P1       | ✅     |
+| 18.6 | Ranking weight configuration via MCP                        | Expose `set_ranking_weights(semantic, entity, graph, keyword)` MCP tool to adjust ranking at runtime without restarting server                                                               | Low        | P3       | ✅     |
+| 18.7 | Retrieval evaluation benchmark                              | Create `data/eval_queries.json` with a set of curated queries + expected note paths; write a script to compute precision@k, recall@k, and MRR across the pipeline                            | Medium     | P2       | ❌     |
+| 18.8 | Evaluation run command (`cli.py eval`)                      | Add CLI command that runs the evaluation benchmark against the current retrieval pipeline, prints precision/recall/MRR, and optionally saves results to `data/eval_results.json`              | Low        | P3       | ❌     |
+| 18.9 | Community-aware retrieval scoring                           | In the `retrieve()` pipeline, detect which graph community each result belongs to; boost the score of notes sharing a community with the top-3 semantic results                               | Medium     | P2       | ❌     |
+| 18.10 | `get_note_community` MCP tool                              | Given a note path, return which graph community it belongs to (label-propagation cluster), along with top-5 other notes in the same community                                                 | Low        | P3       | ❌     |
+
+---
+
+## Phase 19 — Knowledge Graph & Analytics
+
+| #    | Task                                                      | Description                                                                                                                                                                                 | Difficulty | Priority | Status |
+| ---- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------- | ------ |
+| 19.1 | Shortest-path query in graph store                        | Implement Dijkstra/BFS shortest-path between two notes in the wiki-link graph; return path with intermediate node list and hop count; expose as `get_shortest_path` MCP tool                 | Medium     | P2       | ❌     |
+| 19.2 | Graph analytics dashboard (export)                        | Generate a standalone HTML dashboard with graph metrics (degree distribution, connected components, clustering coefficient); export alongside current DOT/JSON output                         | Medium     | P3       | ❌     |
+| 19.3 | Graph clustering metrics enhancement                      | Improve community detection with modularity scoring; report community quality in `get_graph_stats`; add per-community member listing                                                          | Low        | P3       | ❌     |
+| 19.4 | Cross-vault entity resolution (multi-vault support)        | Support entity matching across multiple Obsidian vaults; merge entity indices from different vaults with configurable dedup thresholds                                                        | High       | P3       | ❌     |
+| 19.5 | Composite index: entity + graph + summary search          | Combine summary embedding search, entity-relationship expansion, and community-aware graph traversal into a single high-recall retrieval mode; configurable via `retrieval_depth` parameter   | High       | P2       | ❌     |
+
+---
+
 ## Summary
 
-| Phase                                         | Total Tasks | P1     | P2     | P3     | Done   | Remaining |
-| --------------------------------------------- | ----------- | ------ | ------ | ------ | ------ | --------- |
-| Phase 1 — Foundation                          | 14          | 8      | 5      | 1      | 14     | 0         |
-| Phase 2 — MCP Server                          | 13          | 8      | 4      | 1      | 13     | 0         |
-| Phase 3 — LLM + Agent                         | 10          | 6      | 3      | 1      | 10     | 0         |
-| Phase 4 — Polish                              | 12          | 6      | 3      | 3      | 12     | 0         |
-| Phase 5 — Search Improvements                 | 10          | 3      | 4      | 3      | 10     | 0         |
-| Phase 6 — Todo Management                     | 7           | 1      | 3      | 3      | 7      | 0         |
-| Phase 7 — Advanced Features                   | 15          | 1      | 7      | 7      | 15     | 0         |
-| Phase 8 — Performance optimization follow-ups | 4           | 0      | 3      | 1      | 4      | 0         |
-| Phase 9 — Bug Fixes                           | 4           | 2      | 2      | 0      | 4      | 0         |
-| Phase 10 — Security Hardening                 | 4           | 1      | 3      | 0      | 4      | 0         |
-| Phase 11 — Tech Debt / Refactoring            | 5           | 0      | 2      | 3      | 5      | 0         |
-| Phase 12 — Test Coverage                      | 7           | 0      | 5      | 2      | 7      | 0         |
-| Phase 13 — New Functionality                  | 2           | 0      | 1      | 1      | 2      | 0         |
-| Phase 14 — Graph RAG                          | 18          | 10     | 4      | 4      | 18     | 0         |
-| Phase 15 — Indexer Performance                | 8           | 1      | 3      | 4      | 8      | 0         |
-| Phase 16 — Performance Optimizations          | 10          | 1      | 6      | 3      | 10     | 0         |
-| **Total**                                     | **143**     | **48** | **58** | **37** | **143** | **0**     |
+| Phase                                                       | Total Tasks | P1     | P2     | P3     | Done   | Remaining |
+| ----------------------------------------------------------- | ----------- | ------ | ------ | ------ | ------ | --------- |
+| Phase 1 — Foundation                                        | 14          | 8      | 5      | 1      | 14     | 0         |
+| Phase 2 — MCP Server                                        | 13          | 8      | 4      | 1      | 13     | 0         |
+| Phase 3 — LLM + Agent                                       | 10          | 6      | 3      | 1      | 10     | 0         |
+| Phase 4 — Polish                                            | 12          | 6      | 3      | 3      | 12     | 0         |
+| Phase 5 — Search Improvements                               | 10          | 3      | 4      | 3      | 10     | 0         |
+| Phase 6 — Todo Management                                   | 7           | 1      | 3      | 3      | 7      | 0         |
+| Phase 7 — Advanced Features                                 | 15          | 1      | 7      | 7      | 15     | 0         |
+| Phase 8 — Performance optimization follow-ups               | 4           | 0      | 3      | 1      | 4      | 0         |
+| Phase 9 — Bug Fixes                                         | 4           | 2      | 2      | 0      | 4      | 0         |
+| Phase 10 — Security Hardening                               | 4           | 1      | 3      | 0      | 4      | 0         |
+| Phase 11 — Tech Debt / Refactoring                          | 5           | 0      | 2      | 3      | 5      | 0         |
+| Phase 12 — Test Coverage                                    | 7           | 0      | 5      | 2      | 7      | 0         |
+| Phase 13 — New Functionality                                | 2           | 0      | 1      | 1      | 2      | 0         |
+| Phase 14 — Graph RAG                                        | 18          | 10     | 4      | 4      | 18     | 0         |
+| Phase 15 — Indexer Performance                              | 8           | 1      | 3      | 4      | 8      | 0         |
+| Phase 16 — Performance Optimizations                        | 10          | 1      | 6      | 3      | 10     | 0         |
+| Phase 17 — Entity Resolution & Relationships                | 9           | 0      | 5      | 4      | 7      | 2         |
+| Phase 18 — Retrieval Quality & Evaluation                   | 10          | 2      | 6      | 2      | 4      | 6         |
+| Phase 19 — Knowledge Graph & Analytics                      | 5           | 0      | 2      | 3      | 0      | 5         |
+| **Total**                                                   | **167**     | **50** | **71** | **46** | **154** | **13**    |

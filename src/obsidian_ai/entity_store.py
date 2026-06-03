@@ -46,8 +46,10 @@ class EntityStore:
             os.path.dirname(config.chroma_path) or "data", "entities.json"
         )
         self._data: dict[str, dict] = {}  # normalized_name -> entity record
+        self._alias_map: dict[str, str] = {}  # normalized_alias -> normalized_canonical
         self._lock = threading.Lock()
         self._load()
+        self._load_manual_aliases()
 
     # ── Persistence ──────────────────────────────────────────────────
 
@@ -57,16 +59,86 @@ class EntityStore:
                 with open(self._path, encoding="utf-8") as f:
                     content = f.read().strip()
                     if content:
-                        self._data = json.loads(content).get("entities", {})
+                        data = json.loads(content)
+                        self._data = data.get("entities", {})
+                        self._alias_map = {
+                            k: v for d in data.get("alias_map", {})
+                            for k, v in d.items()
+                        } if isinstance(data.get("alias_map"), list) else dict(data.get("alias_map", {}))
             except (json.JSONDecodeError, OSError):
                 self._data = {}
+                self._alias_map = {}
+        self._rebuild_alias_map()
 
     def save(self) -> None:
         with self._lock:
             data_copy = dict(self._data)
+            alias_copy = dict(self._alias_map)
         os.makedirs(os.path.dirname(self._path) or ".", exist_ok=True)
         with open(self._path, "w", encoding="utf-8") as f:
-            json.dump({"entities": data_copy}, f, indent=2, ensure_ascii=False)
+            json.dump({"entities": data_copy, "alias_map": alias_copy}, f, indent=2, ensure_ascii=False)
+
+    # ── Alias Map ────────────────────────────────────────────────────
+
+    def _rebuild_alias_map(self) -> None:
+        """Rebuild the alias_map from all entity records."""
+        self._alias_map = {}
+        for key, record in self._data.items():
+            for alias in record.get("aliases", []):
+                alias_key = _normalize(alias)
+                if alias_key != key:
+                    self._alias_map[alias_key] = key
+
+    def _register_alias(self, record_key: str, alias: str) -> None:
+        """Register a single alias in the alias map (thread-safe, caller must hold lock)."""
+        alias_key = _normalize(alias)
+        if alias_key != record_key:
+            self._alias_map[alias_key] = record_key
+
+    # ── Manual Aliases ───────────────────────────────────────────────
+
+    def _manual_aliases_path(self) -> str:
+        return getattr(config, "entity_aliases_file", "") or os.path.join(
+            os.path.dirname(self._path) or "data", "entity_aliases.json"
+        )
+
+    def _load_manual_aliases(self) -> None:
+        """Load user-defined aliases from ``entity_aliases.json`` and apply them.
+
+        Manual aliases take precedence over LLM-generated aliases.
+        """
+        path = self._manual_aliases_path()
+        if not os.path.isfile(path):
+            return
+        try:
+            with open(path, encoding="utf-8") as f:
+                raw = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return
+
+        aliases_by_entity: dict[str, list[str]] = (
+            raw if isinstance(raw, dict) else {}
+        )
+        if not aliases_by_entity:
+            return
+
+        with self._lock:
+            for canonical_name, alias_list in aliases_by_entity.items():
+                key = _normalize(canonical_name)
+                record = self._data.get(key)
+                if record is None:
+                    # Create a minimal record — type will be inferred on next index
+                    record = {
+                        "canonical": canonical_name,
+                        "type": "Concept",
+                        "aliases": [],
+                        "mentions": [],
+                    }
+                    self._data[key] = record
+                for alias in alias_list:
+                    if alias and alias not in record["aliases"]:
+                        record["aliases"].append(alias)
+                        self._register_alias(key, alias)
 
     # ── Add ──────────────────────────────────────────────────────────
 
@@ -78,8 +150,20 @@ class EntityStore:
         path: str,
         chunk_idx: int = 0,
         context: str = "",
+        aliases: list[str] | None = None,
     ) -> None:
-        """Record an entity mention found in a note chunk. Thread-safe."""
+        """Record an entity mention found in a note chunk. Thread-safe.
+
+        Args:
+            name: canonical entity name (e.g. ``"ESP32"``).
+            type: entity type from ``_ENTITY_TYPES``.
+            confidence: 0.0–1.0 confidence score.
+            path: vault-relative note path.
+            chunk_idx: chunk index within the note.
+            context: surrounding text snippet.
+            aliases: optional list of alternative names for this entity
+                (e.g. ``["ESP-32", "esp32 dev board"]``).
+        """
         if type not in _ENTITY_TYPES:
             type = "Concept"
         key = _normalize(name)
@@ -97,6 +181,14 @@ class EntityStore:
                 if record["type"] != type and not _is_broader_type(record["type"], type):
                     record["type"] = type
                 _maybe_add_alias(record, name)
+
+            # Register LLM-generated / user-provided aliases
+            if aliases:
+                for alias in aliases:
+                    alias_str = str(alias).strip()
+                    if alias_str and alias_str not in record["aliases"]:
+                        record["aliases"].append(alias_str)
+                        self._register_alias(key, alias_str)
 
             mention: dict = {
                 "path": path,
@@ -123,9 +215,18 @@ class EntityStore:
         type: str | None = None,
         n: int = 10,
     ) -> list[dict]:
-        """Find notes mentioning an entity. Returns deduplicated results."""
+        """Find notes mentioning an entity. Returns deduplicated results.
+
+        Looks up the name directly first, then falls back to the alias map
+        so queries like ``"Her"`` can find entity ``"Maria"``.
+        """
         key = _normalize(name)
         record = self._data.get(key)
+        if record is None:
+            canonical_key = self._alias_map.get(key)
+            if canonical_key:
+                record = self._data.get(canonical_key)
+
         if record is None:
             return []
 
@@ -177,18 +278,109 @@ class EntityStore:
                     break
         return sorted(results, key=lambda r: r["confidence"], reverse=True)
 
+    # ── Aliases ──────────────────────────────────────────────────────
+
+    def get_aliases(self, name: str) -> dict | None:
+        """Return all alias information for a given entity.
+
+        Args:
+            name: entity name (canonical or alias).
+
+        Returns:
+            Dict with ``canonical``, ``type``, ``aliases`` (list), and
+            ``mention_count``, or ``None`` if the entity is not found.
+        """
+        key = _normalize(name)
+        record = self._data.get(key)
+        if record is None:
+            canonical_key = self._alias_map.get(key)
+            if canonical_key:
+                record = self._data.get(canonical_key)
+        if record is None:
+            return None
+        return {
+            "canonical": record["canonical"],
+            "type": record["type"],
+            "aliases": list(record.get("aliases", [])),
+            "mention_count": len(record["mentions"]),
+        }
+
+    def merge(self, primary: str, secondary: str) -> dict | None:
+        """Merge *secondary* entity into *primary*.
+
+        Combines mention lists, merges aliases, keeps the primary canonical
+        name, and removes the secondary record. The alias map is rebuilt
+        afterward.
+
+        Args:
+            primary: the entity name to keep (canonical).
+            secondary: the entity name to merge and then delete.
+
+        Returns:
+            The updated primary record dict, or ``None`` if either entity
+            is not found.
+        """
+        primary_key = _normalize(primary)
+        secondary_key = _normalize(secondary)
+
+        if primary_key == secondary_key:
+            return None
+
+        with self._lock:
+            primary_rec = self._data.get(primary_key)
+            secondary_rec = self._data.get(secondary_key)
+
+            if primary_rec is None or secondary_rec is None:
+                return None
+
+            # Merge mentions (deduplicate by (path, chunk_idx))
+            seen = {(m["path"], m["chunk_idx"]) for m in primary_rec["mentions"]}
+            for m in secondary_rec["mentions"]:
+                key_pair = (m["path"], m["chunk_idx"])
+                if key_pair not in seen:
+                    seen.add(key_pair)
+                    primary_rec["mentions"].append(m)
+
+            primary_rec["mentions"].sort(key=lambda x: x["confidence"], reverse=True)
+
+            # Merge aliases
+            for alias in secondary_rec.get("aliases", []):
+                if alias not in primary_rec["aliases"]:
+                    primary_rec["aliases"].append(alias)
+
+            # Add the secondary name itself as an alias
+            secondary_canonical = secondary_rec["canonical"]
+            if secondary_canonical not in primary_rec["aliases"]:
+                primary_rec["aliases"].append(secondary_canonical)
+
+            # Remove secondary record
+            del self._data[secondary_key]
+
+            # Rebuild alias map
+            self._rebuild_alias_map()
+
+        self.save()
+        return {
+            "canonical": primary_rec["canonical"],
+            "type": primary_rec["type"],
+            "aliases": list(primary_rec["aliases"]),
+            "mention_count": len(primary_rec["mentions"]),
+        }
+
     # ── Rebuild ──────────────────────────────────────────────────────
 
     def clear(self) -> None:
         """Wipe all entity data (used on full re-index). Thread-safe."""
         with self._lock:
             self._data = {}
+            self._alias_map = {}
 
     def rebuild(self) -> None:
         """Rebuild the entity store from ChromaDB metadata."""
         from . import chroma_store
 
         self._data = {}
+        self._alias_map = {}
         _, _, metadatas = chroma_store.get_all_documents()
         for meta in metadatas:
             entities_str = meta.get("entities_str", "")
@@ -211,6 +403,7 @@ class EntityStore:
                         chunk_idx=chunk_idx,
                         context="",
                     )
+        self._load_manual_aliases()
         self.save()
 
     # ── Stats ────────────────────────────────────────────────────────
@@ -279,8 +472,8 @@ def _maybe_add_alias(record: dict, name: str) -> None:
 
 
 def add(name: str, type: str, confidence: float, path: str,
-        chunk_idx: int = 0, context: str = "") -> None:
-    _get_store().add(name, type, confidence, path, chunk_idx, context)
+        chunk_idx: int = 0, context: str = "", aliases: list[str] | None = None) -> None:
+    _get_store().add(name, type, confidence, path, chunk_idx, context, aliases=aliases)
 
 
 def search(name: str, type: str | None = None, n: int = 10) -> list[dict[str, str | float]]:
@@ -293,6 +486,14 @@ def search_by_type(type: str, n: int = 20) -> list[dict[str, str | int]]:
 
 def get_note_entities(path: str) -> list[dict[str, str | float]]:
     return _get_store().get_note_entities(path)
+
+
+def get_aliases(name: str) -> dict | None:
+    return _get_store().get_aliases(name)
+
+
+def merge(primary: str, secondary: str) -> dict | None:
+    return _get_store().merge(primary, secondary)
 
 
 def clear() -> None:

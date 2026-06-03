@@ -183,7 +183,7 @@ All tools that accept a `path` parameter auto-normalize it — you can pass abso
 ## Project Structure
 
 ```
-obsidian-ai/
+obsidian_mcp_server_test/
 ├── src/
 │   └── obsidian_ai/
 │       ├── __init__.py              # Package init
@@ -198,8 +198,10 @@ obsidian-ai/
 │       ├── entity_store.py          # Entity extraction and inverted index
 │       ├── graph_store.py           # Wiki-link graph storage and traversal
 │       ├── wiki_links.py            # Wiki-link parsing utilities
+│       ├── keyword_search.py        # Keyword-based search over notes
+│       ├── todos.py                 # Todo management (get/add/complete/update/delete)
 │       └── mcp_server.py            # FastMCP server (57 tools)
-├── cli.py                           # CLI wrapper (argparse, 15 commands)
+├── src/data/                        # Empty data directory (reserved)
 ├── docs/                            # User documentation
 │   ├── setup.md
 │   ├── architecture.md
@@ -208,21 +210,63 @@ obsidian-ai/
 │   ├── indexer.md
 │   ├── files.md
 │   └── troubleshooting.md
+├── dev/                             # Developer notes and planning
+│   ├── description.md
+│   ├── final_product.md
+│   ├── improvement.md
+│   ├── optimizations.md
+│   ├── tasks.md
+│   └── word_limit_fix.md
 ├── data/                            # Persistent data
 │   ├── chroma_db/                   # Vector database (gitignored)
+│   ├── combined_cache.json
 │   ├── content_hashes.json
+│   ├── embed_cache.json
+│   ├── entities.json
 │   ├── entity_cache.json
-│   ├── summary_cache.json
-│   ├── note_paths.json
-│   ├── title_to_path.json
 │   ├── graph.json
-│   └── entities.json
+│   ├── mtime_map.json
+│   ├── note_paths.json
+│   └── summary_cache.json
 ├── logs/                            # Log files (gitignored)
 │   ├── indexer.log
-│   └── mcp_calls.log
-├── tests/                           # Unit tests (226+)
+│   ├── mcp_calls.log
+│   ├── test_file.log
+│   └── todos.log
+├── graphify-out/                    # Knowledge graph exports
+│   ├── cache/
+│   ├── cost.json
+│   ├── GRAPH_REPORT.md
+│   ├── graph.html
+│   ├── graph.json
+│   └── manifest.json
+├── tests/                           # Unit tests (244+)
+│   ├── test_chroma_store.py
+│   ├── test_config.py
+│   ├── test_entity_store.py
+│   ├── test_frontmatter.py
+│   ├── test_graph_store.py
+│   ├── test_indexer.py
+│   ├── test_keyword_search.py
+│   ├── test_llm_client.py
+│   ├── test_logger.py
+│   ├── test_mcp_server.py
+│   ├── test_modules.py
+│   ├── test_obsidian_client.py
+│   ├── test_pipelines.py
+│   ├── test_todos.py
+│   └── test_wiki_links.py
+├── .claude/                         # Claude agent settings
+│   └── settings.local.json
+├── .openclaude/                     # OpenClaude agent settings
+│   └── settings.local.json
 ├── .env                             # API keys and config (gitignored)
+├── .env.example                     # Environment variable template
+├── .gitignore
+├── .mcp.json                        # MCP server config for editors
+├── cli.py                           # CLI entry point
 ├── pyproject.toml                   # Project dependencies
+├── uv.lock                          # Locked dependency versions
 └── README.md
 ```
 
