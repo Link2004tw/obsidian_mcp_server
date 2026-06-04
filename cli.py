@@ -199,6 +199,17 @@ def main():
     p.add_argument("path_a", help="Path to the first note")
     p.add_argument("path_b", help="Path to the second note")
 
+    # eval
+    p = sub.add_parser(
+        "eval", help="Run retrieval evaluation benchmark against data/eval_queries.json"
+    )
+    p.add_argument("--top-k", type=int, default=5, help="Results per query (default 5)")
+    p.add_argument("--use-graph", action="store_true", help="Enable graph traversal")
+    p.add_argument("--use-summaries", action="store_true", help="Enable summary-first retrieval")
+    p.add_argument("--expand-entities", action="store_true", help="Enable entity expansion")
+    p.add_argument("--use-community-boost", action="store_true", help="Enable community-aware boost")
+    p.add_argument("--benchmark", default=None, help="Path to custom benchmark JSON")
+
     # search-by-tags
     p = sub.add_parser(
         "search-by-tags", help="Find notes by YAML frontmatter tags (all tags must match)"
@@ -225,6 +236,13 @@ def main():
     p.add_argument("query", help="Search query to find relevant notes")
     p.add_argument("-k", "--top-k", type=int, default=5, help="Number of notes to tag (default 5)")
 
+    # dashboard
+    p = sub.add_parser("dashboard", help="Generate or serve the knowledge graph HTML dashboard")
+    p.add_argument("--output", "-o", default=None, help="Write static HTML dashboard to this file")
+    p.add_argument("--serve", action="store_true", help="Start a live dashboard web server")
+    p.add_argument("--host", default="localhost", help="Bind host for --serve (default localhost)")
+    p.add_argument("--port", type=int, default=8765, help="Bind port for --serve (default 8765)")
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
@@ -233,6 +251,38 @@ def main():
     # ── commands that bypass MCP (long-running or not exposed) ──
     if args.command == "watch":
         cmd_watch()
+        return
+
+    if args.command == "eval":
+        from obsidian_ai.eval import format_results, load_benchmark, run_eval
+        queries = load_benchmark(args.benchmark)
+        if not queries:
+            print("No queries found in benchmark file.")
+            return
+        results = run_eval(
+            queries=queries,
+            top_k=args.top_k,
+            use_graph=args.use_graph,
+            use_summaries=args.use_summaries,
+            expand_entities=args.expand_entities,
+            use_community_boost=args.use_community_boost,
+        )
+        print(format_results(results))
+        return
+
+    if args.command == "dashboard":
+        from obsidian_ai.dashboard import gather_data, generate
+        from obsidian_ai.dashboard import serve as _serve
+        if args.serve:
+            _serve(host=args.host, port=args.port)
+            return
+        output = args.output or "dashboard.html"
+        data = gather_data()
+        html = generate(data)
+        with open(output, "w", encoding="utf-8") as f:
+            f.write(html)
+        print(f"Dashboard written to {output}")
+        print(f"  {data['graph']['nodes']} nodes · {data['graph']['edges']} edges · {data['graph']['community_count']} communities")
         return
 
     # ── dispatch to MCP tool ────────────────────────────────────

@@ -1,7 +1,7 @@
 """Graph store for Obsidian wiki-link relationships."""
 import json
 import os
-from collections import Counter
+from collections import Counter, deque
 
 from . import config
 from .wiki_links import extract_wiki_links
@@ -176,6 +176,40 @@ class GraphStore:
 
         return results
 
+    def shortest_path(self, start: str, end: str) -> list[str] | None:
+        """Find the shortest path between two notes via BFS (unweighted graph).
+
+        Wiki-link edges are unweighted, so BFS guarantees the shortest path.
+        The search considers both directions (undirected traversal).
+
+        Args:
+            start: starting note path (vault-relative).
+            end: target note path (vault-relative).
+
+        Returns:
+            List of paths from *start* to *end* (inclusive), e.g.
+            ``["a.md", "b.md", "c.md"]``, or ``None`` if no path exists
+            or either node is missing from the graph.
+        """
+        if start not in self._adj or end not in self._adj:
+            return None
+        if start == end:
+            return [start]
+
+        visited: set[str] = {start}
+        queue: deque[tuple[str, list[str]]] = deque([(start, [start])])
+
+        while queue:
+            node, trace = queue.popleft()
+            for neighbor in self._adj.get(node, set()):
+                if neighbor == end:
+                    return trace + [neighbor]
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append((neighbor, trace + [neighbor]))
+
+        return None
+
     # ── Stats ────────────────────────────────────────────────────────
 
     def stats(self) -> dict:
@@ -204,6 +238,10 @@ class GraphStore:
         isolated = [p for p in adj if not adj[p] and p not in incoming]
         hubs = degree.most_common(5)
 
+        communities = self.label_propagation()
+        modularity = self.modularity(communities) if nodes > 1 else 0.0
+        community_count = len(set(communities.values())) if communities else 0
+
         return {
             "nodes": nodes,
             "edges": edge_count,
@@ -211,6 +249,8 @@ class GraphStore:
             "isolated_count": len(isolated),
             "isolated": sorted(isolated),
             "hubs": [{"path": p, "degree": d} for p, d in hubs],
+            "community_count": community_count,
+            "modularity": round(modularity, 4),
         }
 
     # ── Broken Links ─────────────────────────────────────────────────
@@ -384,6 +424,148 @@ class GraphStore:
         remap = {old: new for new, old in enumerate(unique)}
         return {node: remap[lbl] for node, lbl in labels.items()}
 
+    def modularity(self, communities: dict[str, int] | None = None) -> float:
+        """Compute modularity of the current community partition.
+
+        Uses the standard Newman-Girvan undirected modularity formula:
+
+            Q = Σ_c [ (L_c / m) - (d_c / 2m)² ]
+
+        where:
+            L_c = edges inside community c
+            d_c = sum of degrees of nodes in community c
+            m   = total edges in graph
+
+        Entity nodes are excluded. Self-loops are ignored.
+        Higher Q (closer to 1) means stronger community structure.
+
+        Args:
+            communities: optional pre-computed {path: cid} mapping
+                         (from label_propagation). If None, computes it.
+
+        Returns:
+            Modularity score (-1 to 1). Returns 0.0 for graphs with
+            fewer than 2 nodes or 0 edges.
+        """
+        if communities is None:
+            communities = self.label_propagation()
+        if not communities:
+            return 0.0
+
+        note_adj = self._non_entity_nodes()
+        nodes = list(note_adj.keys())
+        if len(nodes) < 2:
+            return 0.0
+
+        # Total undirected edges (each pair counted once)
+        m = 0
+        for src in nodes:
+            for tgt in note_adj[src]:
+                if tgt in nodes and tgt != src:
+                    m += 1
+        # Each edge was counted twice (from src and from tgt)
+        m //= 2
+        if m == 0:
+            return 0.0
+
+        # Degree per node
+        degree: dict[str, int] = {}
+        for src in nodes:
+            deg = 0
+            for tgt in note_adj[src]:
+                if tgt in nodes and tgt != src:
+                    deg += 1
+            # Backlinks
+            for other_src in nodes:
+                if src in note_adj[other_src] and other_src != src:
+                    deg += 1
+            # Each undirected edge was counted twice, but we want total
+            # incident edges count. The above counts outgoing + incoming.
+            # For undirected: degree = out_edges + in_edges
+            degree[src] = deg // 2  # each undirected edge counted twice
+
+        # Group nodes by community
+        comm_nodes: dict[int, list[str]] = {}
+        for node in nodes:
+            cid = communities.get(node)
+            if cid is not None:
+                comm_nodes.setdefault(cid, []).append(node)
+
+        q = 0.0
+        for _cid, members in comm_nodes.items():
+            if len(members) < 1:
+                continue
+            l_c = 0
+            d_c = 0
+            for node in members:
+                d_c += degree.get(node, 0)
+                for tgt in note_adj[node]:
+                    if tgt in members and tgt != node:
+                        l_c += 1
+            # Each internal edge counted twice
+            l_c //= 2
+            q += (l_c / m) - (d_c / (2 * m)) ** 2
+
+        return q
+
+    def community_neighbors(self, paths: list[str], include_self: bool = False) -> dict[str, list[str]]:
+        """Find all notes in the same community as any of the given paths.
+
+        Communities are detected via label propagation.  Entity nodes are
+        excluded from consideration.
+
+        Args:
+            paths: seed note paths to find community neighbors for.
+            include_self: if True, include the seed paths themselves in the
+                returned neighbor lists (default False).
+
+        Returns:
+            ``{seed_path: [neighbor_paths]}`` — each seed maps to all other
+            non-entity note paths in the same community.
+        """
+        communities = self.label_propagation()
+        if not communities:
+            return {}
+
+        # Build reverse map: community_id -> list of paths
+        comm_members: dict[int, list[str]] = {}
+        for node, cid in communities.items():
+            comm_members.setdefault(cid, []).append(node)
+
+        result: dict[str, list[str]] = {}
+        for seed in paths:
+            cid = communities.get(seed)
+            if cid is None:
+                result[seed] = []
+                continue
+            members = [m for m in comm_members.get(cid, []) if m != seed or include_self]
+            result[seed] = members
+
+        return result
+
+    def get_community_info(self, path: str, top_k: int = 5) -> dict | None:
+        """Return the community ID and top-K other members for a note path.
+
+        Args:
+            path: vault-relative note path.
+            top_k: max number of community members to return.
+
+        Returns:
+            ``{"community_id": int, "members": [str]}`` or ``None`` if
+            the path is not in any community (empty / single-node graph).
+        """
+        communities = self.label_propagation()
+        if not communities:
+            return None
+        cid = communities.get(path)
+        if cid is None:
+            return None
+        members = [p for p in communities if communities[p] == cid and p != path]
+        return {
+            "community_id": cid,
+            "members": sorted(members)[:top_k],
+        }
+
 
 # ── Module-level singleton ──────────────────────────────────────────
 
@@ -445,6 +627,10 @@ def bfs(start: str, max_depth: int = 1) -> dict[str, list[str]]:
     return _get_store().bfs(start, max_depth=max_depth)
 
 
+def shortest_path(start: str, end: str) -> list[str] | None:
+    return _get_store().shortest_path(start, end)
+
+
 def get_broken_links(all_notes: dict[str, str]) -> list[dict[str, str]]:
     return _get_store().get_broken_links(all_notes)
 
@@ -467,3 +653,15 @@ def to_dot() -> str:
 
 def label_propagation(max_iter: int = 100) -> dict[str, int]:
     return _get_store().label_propagation(max_iter=max_iter)
+
+
+def modularity(communities: dict[str, int] | None = None) -> float:
+    return _get_store().modularity(communities=communities)
+
+
+def community_neighbors(paths: list[str], include_self: bool = False) -> dict[str, list[str]]:
+    return _get_store().community_neighbors(paths, include_self=include_self)
+
+
+def get_community_info(path: str, top_k: int = 5) -> dict | None:
+    return _get_store().get_community_info(path, top_k=top_k)

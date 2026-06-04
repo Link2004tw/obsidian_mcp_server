@@ -1,4 +1,4 @@
-from obsidian_ai.frontmatter import add_tags, build, parse
+from obsidian_ai.frontmatter import add_tags, build, parse, validate
 
 
 def test_parse_no_frontmatter():
@@ -50,3 +50,58 @@ def test_add_tags_converts_string_to_list():
     assert "extra" in result
     assert "- single" in result
     assert "- extra" in result
+
+
+# ── Validation ───────────────────────────────────────────────────────
+
+
+def test_validate_no_frontmatter():
+    assert validate("Just content") == []
+
+
+def test_validate_valid_frontmatter():
+    content = "---\ntags: [python, test]\naliases: [py]\n---\n\nBody"
+    assert validate(content) == []
+
+
+def test_validate_tags_as_string():
+    content = "---\ntags: python\n---\n\nBody"
+    warnings = validate(content)
+    assert len(warnings) == 1
+    assert "string" in warnings[0]
+
+
+def test_validate_tags_as_null():
+    content = "---\ntags:\n---\n\nBody"
+    warnings = validate(content)
+    assert any("null" in w for w in warnings)
+
+
+def test_validate_tags_as_number():
+    content = "---\ntags: 42\n---\n\nBody"
+    warnings = validate(content)
+    assert any("number" in w for w in warnings)
+
+
+def test_validate_tags_non_string_in_list():
+    content = "---\ntags: [good, 42]\n---\n\nBody"
+    warnings = validate(content)
+    assert any("non-string" in w for w in warnings)
+
+
+def test_validate_aliases_not_list():
+    content = "---\naliases: wrong\n---\n\nBody"
+    warnings = validate(content)
+    assert any("list" in w for w in warnings)
+
+
+def test_validate_duplicate_keys():
+    content = "---\ntags: [a]\ntags: [b]\n---\n\nBody"
+    warnings = validate(content)
+    assert any("Duplicate" in w for w in warnings)
+
+
+def test_validate_unclosed():
+    content = "---\ntags: [a]\n"
+    warnings = validate(content)
+    assert any("closed" in w for w in warnings)

@@ -16,7 +16,7 @@ All tools that accept a `path` parameter automatically normalize it: if the LLM 
 
 ---
 
-## Tools (57 total)
+## Tools (67 total)
 
 ### Health
 
@@ -32,9 +32,9 @@ Check the health status of all backend services (Ollama, ChromaDB, Obsidian API)
 
 ### Search & Retrieval
 
-#### `search_notes(query, n=5, tags=None, exclude_tags=None, folder=None, date_after=None, date_before=None, expand_query=False, keyword_weight=0.0, min_similarity=None, diversity_penalty=0.0, use_graph=False, graph_depth=1, graph_weight=0.2, use_entities=False, entity_types=None, group_by_note=False)`
+#### `search_notes(query, n=5, tags=None, exclude_tags=None, folder=None, date_after=None, date_before=None, expand_query=False, keyword_weight=0.0, min_similarity=None, diversity_penalty=0.0, use_graph=False, graph_depth=1, graph_weight=0.2, use_entities=False, entity_types=None, group_by_note=False, expand_entities=False, use_summaries=False, summary_threshold=0.7)`
 
-Semantic search across all indexed notes with rich metadata filtering.
+Semantic search across all indexed notes with rich metadata filtering, TTL-cached query expansion, and optional auto-rewrite using vault terminology.
 
 **Parameters:**
 | Param | Type | Default | Description |
@@ -46,7 +46,7 @@ Semantic search across all indexed notes with rich metadata filtering.
 | `folder` | `str` | `None` | Filter: only notes under this vault-relative folder |
 | `date_after` | `str` | `None` | Filter: ISO date string (e.g. `2024-06-01`) |
 | `date_before` | `str` | `None` | Filter: ISO date string (e.g. `2024-12-31`) |
-| `expand_query` | `bool` | `False` | Expand query with LLM-generated alternative phrasings |
+| `expand_query` | `bool` | `False` | Expand query with LLM-generated alternative phrasings (TTL-cached, see EXPAND_CACHE_TTL) |
 | `keyword_weight` | `float` | `0.0` | BM25 keyword blend (0.0 = pure semantic, 1.0 = pure keyword) |
 | `min_similarity` | `float` | `None` | Minimum similarity threshold (0–1) |
 | `diversity_penalty` | `float` | `0.0` | Penalize notes already represented (0.0–1.0) |
@@ -56,6 +56,9 @@ Semantic search across all indexed notes with rich metadata filtering.
 | `use_entities` | `bool` | `False` | Also search entity index for matching entities |
 | `entity_types` | `list[str]` | `None` | Filter entity types when `use_entities=True` |
 | `group_by_note` | `bool` | `False` | Group results by note path |
+| `expand_entities` | `bool` | `False` | Follow entity relationship edges |
+| `use_summaries` | `bool` | `False` | Include summary-embedding results |
+| `summary_threshold` | `float` | `0.7` | Min similarity for summary results |
 
 **Returns:** `list[dict]`
 
@@ -69,6 +72,22 @@ Semantic search across all indexed notes with rich metadata filtering.
 ---
 
 #### `batch_search(queries, n=5, tags=None, exclude_tags=None, folder=None, keyword_weight=0.0, min_similarity=None)`
+
+---
+
+#### `composite_search(query, n=5, retrieval_depth=2)`
+
+High-recall retrieval combining summary embeddings, entity relationships, and community-aware graph traversal.
+
+**Parameters:**
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `query` | `str` | *(required)* | Search query |
+| `n` | `int` | `5` | Results to return |
+| `retrieval_depth` | `int` | `2` | Strategy: 1=summary, 2=+entity, 3=+community |
+
+**Returns:** `list[dict]` — note-level results with `matched_by` field.
+
 
 Run multiple searches in one call. Each query is searched independently.
 
@@ -87,11 +106,11 @@ Run multiple searches in one call. Each query is searched independently.
 
 ---
 
-#### `retrieve_notes(query, top_k=5, use_graph=False, graph_depth=1, graph_weight=0.2, use_entities=False, entity_types=None, keyword_weight=0.0, min_similarity=None, expand_query=False)`
+#### `retrieve_notes(query, top_k=5, use_graph=False, graph_depth=1, graph_weight=0.2, use_entities=False, entity_types=None, keyword_weight=0.0, min_similarity=None, expand_query=False, expand_entities=False, use_summaries=False, summary_threshold=0.7, auto_weights=False, auto_rewrite=False)`
 
 Multi-strategy retrieval pipeline combining semantic search, entity lookup, and wiki-link graph traversal into a single unified result set.
 
-**Parameters:** Similar to `search_notes`, without `diversity_penalty`, `tags`/`exclude_tags`/`folder`/`date_*` filters.
+**Parameters:** Similar to `search_notes`, without `diversity_penalty`, `tags`/`exclude_tags`/`folder`/`date_*` filters. Adds `auto_weights`, `auto_rewrite`.
 
 **Returns:** `list[dict]` — note-level results with a `matched_by` field indicating which strategy found each result.
 
@@ -334,6 +353,18 @@ Detect communities in the wiki-link graph using label propagation. **Parameters:
 
 ---
 
+#### `get_note_community(path)`
+
+Show which community a specific note belongs to.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `path` | `str` | Vault-relative note path |
+
+**Returns:** `str` — community ID label.
+
+---
+
 #### `multi_hop_traversal(path, max_depth=2)`
 
 Perform BFS graph traversal from a seed note up to N hops.
@@ -365,6 +396,20 @@ Find notes related to a given note using both semantic similarity and graph prox
 
 Export the wiki-link graph for external visualization.
 
+---
+
+#### `get_shortest_path(source, target)`
+
+Find the shortest path between two notes in the wiki-link graph.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `source` | `str` | Vault-relative path of source note |
+| `target` | `str` | Vault-relative path of target note |
+
+**Returns:** `list[str]` — ordered list of note paths forming the shortest path.
+
+
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `format` | `str` | `"json"` | `"dot"` for Graphviz DOT, `"json"` for JSON |
@@ -383,7 +428,7 @@ Find notes with no incoming or outgoing wiki-links (orphans). **Parameters:** No
 
 ### LLM-Powered
 
-#### `ask_vault(question, top_k=3, use_graph=False, graph_depth=1, use_entities=False, entity_types=None, keyword_weight=0.0, expand_query=False)`
+#### `ask_vault(question, top_k=3, use_graph=False, graph_depth=1, use_entities=False, entity_types=None, keyword_weight=0.0, expand_query=False, expand_entities=False, use_summaries=False, summary_threshold=0.7, auto_weights=False, auto_rewrite=False)`
 
 Ask a natural language question about your vault. Searches relevant notes and uses the LLM to generate an answer.
 
@@ -397,7 +442,12 @@ Ask a natural language question about your vault. Searches relevant notes and us
 | `use_entities` | `bool` | `False` | Expand via entity lookup |
 | `entity_types` | `list[str]` | `None` | Filter entity types |
 | `keyword_weight` | `float` | `0.0` | BM25 keyword blend |
-| `expand_query` | `bool` | `False` | LLM query expansion |
+| `expand_query` | `bool` | `False` | LLM query expansion (TTL-cached) |
+| `expand_entities` | `bool` | `False` | Follow entity relationship edges |
+| `use_summaries` | `bool` | `False` | Include summary-embedding results |
+| `summary_threshold` | `float` | `0.7` | Min similarity for summary results |
+| `auto_weights` | `bool` | `False` | Auto-detect query intent, adjust weights |
+| `auto_rewrite` | `bool` | `False` | Rewrite query using vault terminology |
 
 **Returns:** `str` — LLM-generated answer based on vault content.
 
@@ -415,7 +465,7 @@ Route a query to the best tool automatically using an LLM agent. The agent decid
 
 ---
 
-#### `summarize_topic(topic, top_k=5, use_graph=True, graph_depth=1, graph_weight=0.2, use_entities=True, entity_types=None, keyword_weight=0.0, expand_query=False)`
+#### `summarize_topic(topic, top_k=5, use_graph=True, graph_depth=1, graph_weight=0.2, use_entities=True, entity_types=None, keyword_weight=0.0, expand_query=False, expand_entities=False, use_summaries=False, summary_threshold=0.7, auto_weights=False, auto_rewrite=False)`
 
 Search all notes related to a topic and return an LLM-generated consolidated summary.
 
@@ -472,6 +522,97 @@ Return all entities found in a specific note during indexing.
 List all entity type labels present in the index. **Parameters:** None
 
 **Returns:** `list[str]` — sorted entity types (e.g. `["Concept", "Event", "Hardware", ...]`)
+
+---
+
+#### `get_entity_aliases(entity_name)`
+
+List all aliases for a given entity.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `entity_name` | `str` | Entity name |
+
+**Returns:** `list[str]` — alias names.
+
+---
+
+#### `merge_entities(source_name, target_name)`
+
+Merge duplicate entities. All mentions of `source_name` are reassigned to `target_name`.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `source_name` | `str` | Entity to merge from |
+| `target_name` | `str` | Entity to merge into |
+
+**Returns:** `str` — confirmation message.
+
+---
+
+#### `entity_timeline(entity_name)`
+
+Show the timeline of entity mentions across notes (ordered by date).
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `entity_name` | `str` | Entity name |
+
+**Returns:** `list[dict]` — `[{path, date, snippet}, ...]`
+
+---
+
+#### `related_entities(entity_name, entity_types=None, max_entities=10)`
+
+Find entities related to a given entity via the relationship graph.
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `entity_name` | `str` | *(required)* | Entity to find relations for |
+| `entity_types` | `list[str]` | `None` | Filter related by type |
+| `max_entities` | `int` | `10` | Max related entities to return |
+
+**Returns:** `list[dict]` — `[{entity_name, entity_type, relationship, notes}, ...]`
+
+---
+
+#### `get_ranking_weights()`
+
+View current ranking weights for entity, keyword, and graph signals.
+
+**Parameters:** None
+
+**Returns:** `dict` — `{entity_weight, keyword_weight, graph_weight}`
+
+---
+
+#### `set_ranking_weights(entity_weight=None, keyword_weight=None, graph_weight=None)`
+
+Customize ranking weights. Only provided values are updated.
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `entity_weight` | `float` | `None` | Entity signal weight (0-1) |
+| `keyword_weight` | `float` | `None` | Keyword signal weight (0-1) |
+| `graph_weight` | `float` | `None` | Graph signal weight (0-1) |
+
+**Returns:** `dict` — updated weights.
+
+---
+
+### Clustering
+
+#### `get_clusters(force_recompute=False, similarity_threshold=0.6)`
+
+Return semantic clusters of notes based on embedding similarity. Groups notes by meaning across the vault.
+
+**Parameters:**
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `force_recompute` | `bool` | `False` | Ignore cache and re-run clustering |
+| `similarity_threshold` | `float` | `0.6` | Min cosine similarity (0-1) for edge |
+
+**Returns:** `list[dict]` — `[{label, notes, size, central_note}, ...]`
 
 ---
 
@@ -597,6 +738,145 @@ Create a default `todos.md` file in the vault if it doesn't exist. **Parameters:
 
 ---
 
+#### `get_todos_by_priority()`
+
+List todos grouped by priority (high, medium, low).
+
+**Returns:** `dict` — `{priority: [todos]}`
+
+---
+
+#### `add_todo_from_natural_language(text)`
+
+Add a todo from plain text using LLM parsing.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `text` | `str` | Natural language description |
+
+**Returns:** `dict` — `{success, todo_id, ...}`
+
+---
+
+#### `suggest_task_priority(task, context="")`
+
+Suggest a priority for a task using LLM.
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `task` | `str` | *(required)* | Task description |
+| `context` | `str` | `""` | Optional context |
+
+**Returns:** `str` — `"high"`, `"medium"`, or `"low"`.
+
+---
+
+#### `suggest_due_date(task, context="")`
+
+Suggest a due date for a task using LLM.
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `task` | `str` | *(required)* | Task description |
+| `context` | `str` | `""` | Optional context |
+
+**Returns:** `str` — suggested date (YYYY-MM-DD).
+
+---
+
+#### `suggest_task_splitting(task)`
+
+Suggest how to split a large task into smaller subtasks using LLM.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `task` | `str` | Task description to split |
+
+**Returns:** `str` — suggested subtasks.
+
+---
+
+#### `get_overdue_summary()`
+
+Return a summary of all overdue pending todos.
+
+**Returns:** `list[dict]` — overdue todos with days past due.
+
+---
+
+#### `estimate_completion_date(project)`
+
+Estimate completion date for a project based on current progress.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `project` | `str` | Project name |
+
+**Returns:** `str` — estimated date.
+
+---
+
+#### `get_todos_for_note(note)`
+
+Find todos linked to a specific note.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `note` | `str` | Vault-relative note path |
+
+**Returns:** `list[dict]` — linked todos.
+
+---
+
+#### `get_notes_for_todo(todo_id)`
+
+Find notes linked to a specific todo.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `todo_id` | `str` | Todo ID |
+
+**Returns:** `list[str]` — note paths.
+
+---
+
+#### `link_todo_to_notes(todo_id, notes)`
+
+Link a todo to one or more notes.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `todo_id` | `str` | Todo ID |
+| `notes` | `list[str]` | Vault-relative note paths |
+
+**Returns:** `dict` — `{success, ...}`
+
+---
+
+#### `ask_vault_about_todo(todo_id)`
+
+Ask a question about a specific todo in the context of the vault.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `todo_id` | `str` | Todo ID |
+
+**Returns:** `str` — LLM-generated answer.
+
+---
+
+#### `ask_vault_about_todos(query)`
+
+Ask a question about all todos in the context of the vault.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `query` | `str` | Natural language query |
+
+**Returns:** `str` — LLM-generated answer.
+
+---
+
 ## Error Handling
 
 All tools catch exceptions and log them to `logs/mcp_calls.log` with the full traceback. List-returning tools return an empty list `[]` on failure. String-returning tools return an error message string.
@@ -619,4 +899,4 @@ Every tool call is logged to `logs/mcp_calls.log`:
 - `fastmcp` — MCP server framework
 - `pyyaml` — YAML frontmatter parsing
 - `requests` — HTTP client for Obsidian API and Ollama
-- All `obsidian_ai.*` modules (config, logger, frontmatter, obsidian_client, llm_client, chroma_store, indexer, pipelines, entity_store, graph_store, wiki_links, mcp_server)
+- All `obsidian_ai.*` modules (config, logger, frontmatter, obsidian_client, llm_client, chroma_store, indexer, pipelines, entity_store, graph_store, wiki_links, clustering, mcp_server)

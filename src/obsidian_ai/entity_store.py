@@ -406,6 +406,83 @@ class EntityStore:
         self._load_manual_aliases()
         self.save()
 
+    # ── Timeline ─────────────────────────────────────────────────────
+
+    def add_timeline_entry(
+        self,
+        entity_name: str,
+        date: str,
+        event: str,
+        note: str = "",
+        confidence: float = 0.5,
+    ) -> None:
+        """Record a timeline event for an entity. Thread-safe.
+
+        Args:
+            entity_name: canonical entity name (e.g. ``"Alice"``).
+            date: temporal reference (e.g. ``"2024-01"``, ``"2024"``,
+                ``"early 2024"``).
+            event: description of what happened.
+            note: vault-relative note path that mentions this event.
+            confidence: 0.0–1.0 confidence score.
+        """
+        key = _normalize(entity_name)
+        with self._lock:
+            record = self._data.get(key)
+            if record is None:
+                return
+            timeline = record.setdefault("timeline", [])
+            entry = {
+                "date": date,
+                "event": event,
+                "note": note,
+                "confidence": round(confidence, 4),
+            }
+            # Deduplicate by (date, event, note)
+            for existing in timeline:
+                if (existing["date"] == date
+                        and existing["event"] == event
+                        and existing["note"] == note):
+                    if confidence > existing["confidence"]:
+                        existing["confidence"] = round(confidence, 4)
+                    return
+            timeline.append(entry)
+            timeline.sort(key=lambda e: e["date"])
+
+    def get_timeline(
+        self,
+        name: str,
+        date_from: str | None = None,
+        date_to: str | None = None,
+    ) -> list[dict] | None:
+        """Return timeline entries for an entity, sorted by date.
+
+        Args:
+            name: entity name (canonical or alias).
+            date_from: optional lower bound for date filtering (inclusive).
+            date_to: optional upper bound for date filtering (inclusive).
+
+        Returns:
+            List of timeline entries sorted by date, or ``None`` if the
+            entity is not found.
+        """
+        key = _normalize(name)
+        record = self._data.get(key)
+        if record is None:
+            canonical_key = self._alias_map.get(key)
+            if canonical_key:
+                record = self._data.get(canonical_key)
+        if record is None:
+            return None
+
+        timeline = list(record.get("timeline", []))
+        if date_from:
+            timeline = [e for e in timeline if e["date"] >= date_from]
+        if date_to:
+            timeline = [e for e in timeline if e["date"] <= date_to]
+        timeline.sort(key=lambda e: e["date"])
+        return timeline
+
     # ── Stats ────────────────────────────────────────────────────────
 
     def stats(self) -> dict:
@@ -514,3 +591,13 @@ def stats() -> dict[str, int | dict[str, int]]:
 
 def entity_types() -> list[str]:
     return sorted(_ENTITY_TYPES)
+
+
+def add_timeline_entry(entity_name: str, date: str, event: str,
+                       note: str = "", confidence: float = 0.5) -> None:
+    _get_store().add_timeline_entry(entity_name, date, event, note=note, confidence=confidence)
+
+
+def get_timeline(name: str, date_from: str | None = None,
+                 date_to: str | None = None) -> list[dict] | None:
+    return _get_store().get_timeline(name, date_from=date_from, date_to=date_to)

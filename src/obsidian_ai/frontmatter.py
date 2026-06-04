@@ -2,6 +2,77 @@
 import yaml
 
 
+def validate(content: str) -> list[str]:
+    """Check YAML frontmatter for common issues.
+
+    Args:
+        content: raw note Markdown (may or may not have frontmatter).
+
+    Returns:
+        List of validation warnings (empty means all good).
+    """
+    if not content.startswith("---"):
+        return []  # no frontmatter = nothing to validate
+
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        return ["Frontmatter block is not properly closed (needs trailing ---)"]
+
+    raw_yaml = parts[1]
+    if not raw_yaml.strip():
+        return ["Frontmatter block is empty"]
+
+    warnings: list[str] = []
+
+    # Check for duplicate keys
+    seen_keys: set[str] = set()
+    for line in raw_yaml.splitlines():
+        line = line.strip()
+        if ":" in line and not line.startswith("#"):
+            key = line.split(":", 1)[0].strip()
+            if key in seen_keys:
+                warnings.append(f"Duplicate key in frontmatter: \"{key}\"")
+            seen_keys.add(key)
+
+    # Check YAML parses correctly
+    try:
+        meta = yaml.safe_load(raw_yaml)
+    except yaml.YAMLError as e:
+        warnings.append(f"YAML parse error in frontmatter: {e}")
+        return warnings
+
+    if not isinstance(meta, dict):
+        warnings.append("Frontmatter must be a YAML mapping (key: value pairs)")
+        return warnings
+
+    # Validate common field types
+    if "tags" in meta:
+        tags = meta["tags"]
+        if tags is None:
+            warnings.append("Field \"tags\" is null — remove the key or provide a list")
+        elif isinstance(tags, str):
+            warnings.append("Field \"tags\" should be a list, not a string")
+        elif isinstance(tags, (int, float)):
+            warnings.append("Field \"tags\" should be a list of strings, not a number")
+        elif isinstance(tags, list):
+            non_strings = [t for t in tags if not isinstance(t, str)]
+            if non_strings:
+                warnings.append(f"Field \"tags\" contains non-string values: {non_strings}")
+        else:
+            warnings.append(f"Field \"tags\" has unexpected type: {type(tags).__name__}")
+
+    if "aliases" in meta:
+        aliases = meta["aliases"]
+        if not isinstance(aliases, list):
+            warnings.append("Field \"aliases\" should be a list")
+        else:
+            non_strings = [a for a in aliases if not isinstance(a, str)]
+            if non_strings:
+                warnings.append(f"Field \"aliases\" contains non-string values: {non_strings}")
+
+    return warnings
+
+
 def parse(content: str) -> tuple[dict, str]:
     """Parse YAML frontmatter from note content.
 

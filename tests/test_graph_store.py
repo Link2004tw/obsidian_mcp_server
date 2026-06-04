@@ -387,3 +387,204 @@ def test_non_entity_nodes():
     filtered = g._non_entity_nodes()
     assert "A.md" in filtered
     assert "__entity:Person:Alice" not in filtered
+
+
+# ── Shortest Path ────────────────────────────────────────────────────
+
+
+def test_shortest_path_direct():
+    g = _make_graph("/dev/null")
+    g._adj = {
+        "A.md": {"B.md"},
+        "B.md": {"C.md"},
+        "C.md": set(),
+    }
+    path = g.shortest_path("A.md", "B.md")
+    assert path == ["A.md", "B.md"]
+
+
+def test_shortest_path_two_hops():
+    g = _make_graph("/dev/null")
+    g._adj = {
+        "A.md": {"B.md"},
+        "B.md": {"C.md"},
+        "C.md": set(),
+    }
+    path = g.shortest_path("A.md", "C.md")
+    assert path == ["A.md", "B.md", "C.md"]
+
+
+def test_shortest_path_no_path():
+    g = _make_graph("/dev/null")
+    g._adj = {
+        "A.md": {"B.md"},
+        "B.md": set(),
+        "C.md": set(),
+    }
+    path = g.shortest_path("A.md", "C.md")
+    assert path is None
+
+
+def test_shortest_path_same_node():
+    g = _make_graph("/dev/null")
+    g._adj = {"A.md": set()}
+    path = g.shortest_path("A.md", "A.md")
+    assert path == ["A.md"]
+
+
+def test_shortest_path_missing_node():
+    g = _make_graph("/dev/null")
+    g._adj = {"A.md": set()}
+    path = g.shortest_path("A.md", "NONEXISTENT.md")
+    assert path is None
+
+
+def test_shortest_path_bidirectional():
+    """BFS works on directed edges; ensure it finds shortest even when not all edges are bidirectional."""
+    g = _make_graph("/dev/null")
+    g._adj = {
+        "A.md": {"B.md"},
+        "B.md": {"C.md"},
+        "C.md": {"D.md"},
+        "D.md": set(),
+        "E.md": {"A.md"},
+    }
+    path = g.shortest_path("D.md", "E.md")
+    assert path is None  # D has no outgoing edges, and E doesn't point to D
+
+    path = g.shortest_path("E.md", "D.md")
+    assert path == ["E.md", "A.md", "B.md", "C.md", "D.md"]
+
+
+def test_shortest_path_picks_shortest():
+    """When multiple paths exist, BFS should return the shortest one."""
+    g = _make_graph("/dev/null")
+    g._adj = {
+        "A.md": {"B.md", "C.md"},
+        "B.md": {"D.md"},
+        "C.md": {"D.md"},
+        "D.md": set(),
+    }
+    path = g.shortest_path("A.md", "D.md")
+    assert path == ["A.md", "B.md", "D.md"] or path == ["A.md", "C.md", "D.md"]
+    assert len(path) == 3  # 2 hops, not more
+
+
+# ── Community Neighbors ──────────────────────────────────────────────
+
+
+def test_community_neighbors_empty_graph():
+    g = _make_graph("/dev/null")
+    g._adj = {}
+    result = g.community_neighbors(["A.md"])
+    assert result == {}
+
+
+def test_community_neighbors_no_community_for_path():
+    g = _make_graph("/dev/null")
+    g._adj = {
+        "A.md": {"B.md"},
+        "B.md": {"A.md"},
+    }
+    result = g.community_neighbors(["C.md"])
+    assert result["C.md"] == []
+
+
+def test_community_neighbors_returns_same_community():
+    g = _make_graph("/dev/null")
+    g._adj = {
+        "A.md": {"B.md"},
+        "B.md": {"C.md"},
+        "C.md": {"A.md"},
+        "D.md": {"E.md"},
+        "E.md": {"D.md"},
+    }
+    result = g.community_neighbors(["A.md"])
+    members = result["A.md"]
+    assert "B.md" in members
+    assert "C.md" in members
+    assert "D.md" not in members  # separate community
+    assert "E.md" not in members
+
+
+def test_community_neighbors_excludes_entity_nodes():
+    g = _make_graph("/dev/null")
+    g._adj = {
+        "A.md": {"B.md"},
+        "B.md": {"C.md"},
+        "C.md": {"A.md"},
+        "__entity:Person:Alice": {"A.md"},
+    }
+    result = g.community_neighbors(["A.md"])
+    assert "__entity:Person:Alice" not in result["A.md"]
+
+
+def test_community_neighbors_multiple_seeds():
+    g = _make_graph("/dev/null")
+    g._adj = {
+        "A.md": {"B.md"},
+        "B.md": {"A.md"},
+        "C.md": {"D.md"},
+        "D.md": {"C.md"},
+    }
+    result = g.community_neighbors(["A.md", "C.md"])
+    assert "B.md" in result["A.md"]
+    assert "D.md" in result["C.md"]
+
+
+def test_community_neighbors_include_self():
+    g = _make_graph("/dev/null")
+    g._adj = {
+        "A.md": {"B.md"},
+        "B.md": {"A.md"},
+    }
+    result = g.community_neighbors(["A.md"], include_self=True)
+    assert "A.md" in result["A.md"]
+    assert "B.md" in result["A.md"]
+
+
+# ── Community Info ───────────────────────────────────────────────────
+
+
+def test_get_community_info_basic():
+    g = _make_graph("/dev/null")
+    g._adj = {
+        "A.md": {"B.md"},
+        "B.md": {"C.md"},
+        "C.md": {"A.md"},
+        "D.md": {"E.md"},
+        "E.md": {"D.md"},
+    }
+    info = g.get_community_info("A.md", top_k=5)
+    assert info is not None
+    assert isinstance(info["community_id"], int)
+    assert "B.md" in info["members"]
+    assert "C.md" in info["members"]
+    assert "D.md" not in info["members"]
+
+
+def test_get_community_info_nonexistent():
+    g = _make_graph("/dev/null")
+    g._adj = {"A.md": {"B.md"}, "B.md": {"A.md"}}
+    info = g.get_community_info("NONEXISTENT.md")
+    assert info is None
+
+
+def test_get_community_info_empty_graph():
+    g = _make_graph("/dev/null")
+    g._adj = {}
+    info = g.get_community_info("A.md")
+    assert info is None
+
+
+def test_get_community_info_respects_top_k():
+    g = _make_graph("/dev/null")
+    g._adj = {
+        "A.md": {"B.md"},
+        "B.md": {"C.md"},
+        "C.md": {"A.md"},
+        "D.md": {"C.md"},
+    }
+    info = g.get_community_info("A.md", top_k=2)
+    assert info is not None
+    assert len(info["members"]) <= 2

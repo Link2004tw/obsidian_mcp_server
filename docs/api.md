@@ -19,6 +19,7 @@ chunk_size: int             # Words per chunk, default 500
 chunk_overlap: int          # Word overlap between chunks, default 100
 read_workers: int           # READ_WORKERS, default 6 (parallel note readers)
 llm_chat_concurrency: int   # LLM_CHAT_CONCURRENCY, default 2 (max concurrent LLM calls)
+expand_cache_ttl: int       # EXPAND_CACHE_TTL, default 3600 (seconds, TTL for query expansion cache)
 ```
 
 ---
@@ -241,6 +242,15 @@ total = chroma_store.count()
 
 Returns a 3-tuple of `(ids, documents, metadatas)` for every entry in the index. Used by `entity_store.rebuild()`.
 
+### `get_all_embeddings() -> dict[str, list[float]]`
+
+Returns a dict mapping document IDs to their embedding vectors. Used by the clustering module.
+
+```python
+embs = chroma_store.get_all_embeddings()
+# {"path::chunk_0": [0.665, 0.270, ...], ...}
+```
+
 ### `get_metadata_by_ids(ids: list[str]) -> tuple[list[dict], list[str | None]]`
 
 Fetches metadata and documents for specific ChromaDB document IDs.
@@ -414,6 +424,11 @@ answer = pipelines.query("What are my notes about Python?")
 | `expand_query` | `bool` | `False` | LLM query expansion |
 | `entity_types` | `list[str] \| None` | `None` | Filter entity types |
 | `min_similarity` | `float \| None` | `None` | Min similarity threshold |
+| `expand_entities` | `bool` | `False` | Follow entity relationship edges |
+| `use_summaries` | `bool` | `False` | Include summary-embedding results |
+| `summary_threshold` | `float` | `0.7` | Min similarity for summary results |
+| `auto_weights` | `bool` | `False` | Auto-detect intent, adjust weights |
+| `auto_rewrite` | `bool` | `False` | Rewrite query using vault terminology |
 
 ### `tag_notes(ask: str, top_k: int = 5) -> str`
 
@@ -424,9 +439,9 @@ result = pipelines.tag_notes("machine learning")
 # "Tagged 3 notes: {'Notes/nn.md': ['neural-network', 'deep-learning'], ...}"
 ```
 
-### `summarize_topic(topic: str, top_k: int = 5, ...) -> str`
+### `summarize_topic(topic: str, top_k: int = 5, use_graph=True, use_entities=True, keyword_weight=0.0, expand_query=False, expand_entities=False, use_summaries=False, summary_threshold=0.7, auto_weights=False, auto_rewrite=False) -> str`
 
-Search all notes related to a topic and return an LLM-generated consolidated summary.
+Search all notes related to a topic and return an LLM-generated consolidated summary. Supports auto-rewrite and auto-weight detection.
 
 ```python
 summary = pipelines.summarize_topic("machine learning")
@@ -435,12 +450,20 @@ summary = pipelines.summarize_topic("machine learning")
 
 ### `expand_query(query: str) -> str`
 
-Use LLM to generate alternative query phrasings for broader search.
+Use LLM to generate alternative query phrasings for broader search. Results are cached with a configurable TTL (`EXPAND_CACHE_TTL`) and persisted to `data/expand_cache.json`.
 
 ```python
 expanded = pipelines.expand_query("python libraries")
 # "python libraries python packages python modules pip conda"
 ```
+
+### `_rewrite_query(query: str) -> str`
+
+Rewrites a user query using known vault terminology (entity names, note titles). Uses `REWRITE_SYSTEM` prompt. Called when `auto_rewrite=True`.
+
+### `_get_vault_terminology() -> str`
+
+Collects entity names and note titles from the vault to provide context for query rewriting.
 
 ### `route_query(query: str, system: str = AGENT_SYSTEM, top_k: int = 5) -> str`
 
@@ -633,6 +656,34 @@ graph_store.export_graph(format="json")
 
 ---
 
+## clustering.py
+
+Semantic clustering module for grouping notes by meaning.
+
+### `get_clusters(force_recompute: bool = False, similarity_threshold: float = 0.6) -> list[dict]`
+
+Returns semantic clusters of notes based on embedding cosine similarity. Connected-components clustering (no scikit-learn dependency).
+
+**Parameters:**
+- `force_recompute` — if True, ignore cached results and re-cluster
+- `similarity_threshold` — minimum cosine similarity (0–1) for two notes to be connected (default 0.6)
+
+**Returns:** List of clusters, each with:
+- `label` — auto-generated descriptive label from the most central note
+- `notes` — list of note paths in the cluster
+- `size` — number of notes
+- `central_note` — path of the most central (highest-degree) note
+
+```python
+from obsidian_ai.clustering import get_clusters
+clusters = get_clusters(similarity_threshold=0.7)
+# [{"label": "Machine Learning", "notes": [...], "size": 5, "central_note": "..."}, ...]
+```
+
+Results are cached with TTL and persisted to `data/clusters.json`.
+
+---
+
 ## frontmatter.py
 
 YAML frontmatter parsing and manipulation utilities.
@@ -696,27 +747,29 @@ Normalize a wiki-link target: strips display text after `|`, strips section anch
 
 ## mcp_server.py
 
-FastMCP server exposing **57 vault tools**. All path parameters are auto-normalized (absolute or vault-relative accepted). Run with `python -m obsidian_ai.mcp_server`. See [MCP Server](mcp_server.md) for detailed tool documentation.
+FastMCP server exposing **67 vault tools**. Tool implementations are organized in `tools/` submodules (`search.py`, `notes.py`, `graph.py`, `todos.py`, `misc.py`) and registered via `register_all(mcp)`. All path parameters are auto-normalized (absolute or vault-relative accepted). Run with `python -m obsidian_ai.mcp_server`. See [MCP Server](mcp_server.md) for detailed tool documentation.
 
 ### Tools by category
 
-**Search & Retrieval:** `search_notes`, `batch_search`, `retrieve_notes`, `find_duplicate_notes`, `search_by_tags`, `get_subject`, `search_entities`
+**Search & Retrieval:** `search_notes`, `batch_search`, `composite_search`, `retrieve_notes`, `find_duplicate_notes`, `search_by_tags`, `get_subject`, `search_entities`
 
 **Read & Write:** `read_note`, `write_note`, `list_all_notes`, `list_folder`, `list_folder_deep`, `read_note_by_title`
 
 **Tags:** `add_tags`, `remove_tags`, `set_tags`, `batch_tag_notes`, `tag_notes`
 
-**Graph:** `create_backlink`, `get_backlinks`, `get_linked_notes`, `get_broken_links`, `get_orphan_notes`, `get_graph_stats`, `get_communities`, `multi_hop_traversal`, `related_notes`, `export_graph`
+**Graph:** `create_backlink`, `get_backlinks`, `get_linked_notes`, `get_broken_links`, `get_orphan_notes`, `get_graph_stats`, `get_communities`, `get_note_community`, `multi_hop_traversal`, `related_notes`, `export_graph`, `get_shortest_path`
 
 **LLM:** `ask_vault`, `ask_agent`, `summarize_topic`, `tag_notes`
 
-**Entities:** `search_entities`, `get_note_entities`, `get_entity_types`
+**Entities:** `search_entities`, `get_note_entities`, `get_entity_types`, `get_entity_aliases`, `merge_entities`, `entity_timeline`, `related_entities`, `set_ranking_weights`, `get_ranking_weights`
+
+**Clustering:** `get_clusters`
 
 **Health:** `health_check`
 
 **Index:** `sync_index`, `get_index_stats`, `switch_embedding_model`
 
-**Todos:** `get_todos`, `add_todo`, `complete_todo`, `update_todo`, `delete_todo`, `sync_todos`, `get_todo_stats`, `ensure_todo_file`
+**Todos:** `get_todos`, `add_todo`, `complete_todo`, `update_todo`, `delete_todo`, `sync_todos`, `get_todo_stats`, `ensure_todo_file`, `get_todos_by_priority`, `add_todo_from_natural_language`, `suggest_task_priority`, `suggest_due_date`, `suggest_task_splitting`, `get_overdue_summary`, `estimate_completion_date`, `get_todos_for_note`, `get_notes_for_todo`, `link_todo_to_notes`, `ask_vault_about_todo`, `ask_vault_about_todos`
 
 ---
 

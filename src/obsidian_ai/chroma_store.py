@@ -67,6 +67,16 @@ def get_by_path(path: str) -> list[dict]:
     return metadatas  # type: ignore[return-value]
 
 
+def get_chunks_by_path(path: str) -> tuple[list[str], list[dict], list[str | None]]:
+    """Return (ids, metadatas, documents) for all chunks of a note."""
+    _ensure_init()
+    results = _collection.get(where={"path": path}, include=["documents", "metadatas"])  # type: ignore[arg-type]
+    ids: list[str] = results["ids"] if results["ids"] else []
+    metadatas: list[dict] = results["metadatas"] if results["metadatas"] else []  # type: ignore[assignment]
+    docs: list[str | None] = results["documents"] if results["documents"] else []  # type: ignore[assignment]
+    return ids, metadatas, docs
+
+
 def get_by_title(title: str) -> list[dict]:
     """Look up notes by title (basename without extension). Returns metadata dicts."""
     _ensure_init()
@@ -231,6 +241,28 @@ def _dedup_paths(results: list[dict]) -> list[tuple[str, str]]:
         if path not in seen:
             seen[path] = r["metadata"].get("title", path)
     return list(seen.items())
+
+
+def get_all_embeddings() -> list[dict]:
+    """Return all chunk embeddings with metadata.
+
+    Returns:
+        List of {"id", "embedding", "metadata"} for every chunk in the index.
+        Embeddings are list[float] from ChromaDB.
+    """
+    _ensure_init()
+    raw = _collection.get(include=["embeddings", "metadatas"])
+    ids = raw["ids"] or []
+    embeddings = raw["embeddings"]
+    metadatas = raw["metadatas"]
+    result = []
+    for i, doc_id in enumerate(ids):
+        result.append({
+            "id": doc_id,
+            "embedding": embeddings[i] if embeddings else None,
+            "metadata": metadatas[i] if metadatas else {},
+        })
+    return result
 
 
 def query(embedding: list[float], n: int = 5, where: dict | None = None) -> list[dict]:

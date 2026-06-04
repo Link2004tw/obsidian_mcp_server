@@ -16,6 +16,7 @@ from . import (
     llm_client,
     obsidian_client,
     pipelines,
+    summary_store,
 )
 from .frontmatter import add_tags as fm_add_tags
 from .frontmatter import parse as fm_parse
@@ -60,6 +61,7 @@ EXTRACT_AND_SUMMARIZE_SYSTEM = (
     "Return ONLY valid JSON with this exact structure:\n"
     '{"entities": [{"name": str, "type": str, "confidence": float, "aliases": [str]}], '
     '"relationships": [{"source": str, "type": str, "target": str, "confidence": float}], '
+    '"timeline": [{"entity": str, "date": str, "event": str, "confidence": float}], '
     '"summary": str}\n'
     "Entity types: Person, Project, Hardware, Technology, Location, Concept, Event.\n"
     "Relationship types: works_on, uses, part_of, related_to, created_by, located_in, attends.\n"
@@ -79,6 +81,14 @@ EXTRACT_AND_SUMMARIZE_SYSTEM = (
     "- Use the standard relationship type that best fits the connection.\n"
     "- Confidence 0.0-1.0: 0.9+ for explicit statements, 0.7 for strong implication, 0.5 for weak connection.\n"
     "- Return an empty list if no relationships are found.\n"
+    "Rules for timeline:\n"
+    "- Extract any events, milestones, or temporal references involving entities.\n"
+    "- Each entry must reference an entity from the entities list.\n"
+    "- Date formats: prefer YYYY-MM-DD, YYYY-MM, or YYYY; fall back to natural language "
+    "like \"early 2024\", \"Q3 2024\" if exact date is unclear.\n"
+    "- Keep the event description brief and factual (5-15 words).\n"
+    "- Confidence 0.0-1.0: 0.9+ for explicit dates, 0.7 for inferred timing, 0.5 for vague.\n"
+    "- Return an empty list if no temporal events are found.\n"
     "Rules for summary:\n"
     "- Produce a concise 1-2 sentence summary capturing the key information.\n"
     "- Be factual, specific, and use the same language as the original note.\n"
@@ -264,32 +274,34 @@ def _save_combined_cache(cache: dict[str, dict]) -> None:
         log.warning(f"Failed to save combined cache: {e}")
 
 
-def _extract_and_summarize_cached(sanitized: str, path: str, content_hash: str | None) -> tuple[list[dict], list[dict], str]:
-    """Extract entities, relationships, AND generate a summary in a single LLM call. Thread-safe.
+def _extract_and_summarize_cached(sanitized: str, path: str, content_hash: str | None) -> tuple[list[dict], list[dict], list[dict], str]:
+    """Extract entities, relationships, timeline, AND summary in a single LLM call.
 
-    Returns ``(entities, relationships, summary)``. Results are cached by content_hash.
+    Returns ``(entities, relationships, timeline, summary)``.
+    Results are cached by content_hash.
     Falls back to separate calls if SKIP_ENTITIES or SKIP_SUMMARIES is set.
     """
     if content_hash:
         with _COMBINED_CACHE_LOCK:
             cached = _COMBINED_CACHE.get(content_hash)
         if cached is not None:
-            return cached.get("entities", []), cached.get("relationships", []), cached.get("summary", "")
+            return (cached.get("entities", []), cached.get("relationships", []),
+                    cached.get("timeline", []), cached.get("summary", ""))
 
     skip_entities_ = SKIP_ENTITIES
     skip_summaries_ = SKIP_SUMMARIES
 
     # If both are skipped, nothing to do
     if skip_entities_ and skip_summaries_:
-        return [], [], ""
+        return [], [], [], ""
 
     # If only one is skipped, fall back to the existing single-purpose functions
     if skip_entities_:
         summary = _generate_summary_cached(sanitized, content_hash) if not skip_summaries_ else ""
-        return [], [], summary
+        return [], [], [], summary
     if skip_summaries_:
         entities, relationships = _extract_entities_cached(sanitized, path, content_hash)
-        return entities, relationships, ""
+        return entities, relationships, [], ""
 
     for attempt in range(3):
         try:
@@ -307,6 +319,7 @@ def _extract_and_summarize_cached(sanitized: str, path: str, content_hash: str |
 
             raw_entities = data.get("entities", []) if isinstance(data, dict) else []
             raw_relationships = data.get("relationships", []) if isinstance(data, dict) else []
+            raw_timeline = data.get("timeline", []) if isinstance(data, dict) else []
             summary = str(data.get("summary", "")) if isinstance(data, dict) else ""
 
             # Validate entities
@@ -323,7 +336,13 @@ def _extract_and_summarize_cached(sanitized: str, path: str, content_hash: str |
                 if ent_type not in valid_types:
                     ent_type = "Concept"
                 confidence = max(0.0, min(1.0, confidence))
-                entities.append({"name": name, "type": ent_type, "confidence": confidence})
+                raw_aliases = ent.get("aliases")
+                aliases_list = (
+                    [str(a).strip() for a in raw_aliases if isinstance(a, str) and a.strip()]
+                    if isinstance(raw_aliases, list)
+                    else []
+                )
+                entities.append({"name": name, "type": ent_type, "confidence": confidence, "aliases": aliases_list})
 
             # Validate relationships
             relationships = []
@@ -344,14 +363,37 @@ def _extract_and_summarize_cached(sanitized: str, path: str, content_hash: str |
                     "confidence": round(conf, 4),
                 })
 
+            # Validate timeline
+            entity_names = {e["name"].casefold() for e in entities}
+            timeline = []
+            for entry in raw_timeline:
+                if not isinstance(entry, dict):
+                    continue
+                ent_name = str(entry.get("entity", "")).strip()
+                date = str(entry.get("date", "")).strip()
+                event = str(entry.get("event", "")).strip()
+                conf = float(entry.get("confidence", 0.5))
+                if not ent_name or not date or not event:
+                    continue
+                if ent_name.casefold() not in entity_names:
+                    continue
+                conf = max(0.0, min(1.0, conf))
+                timeline.append({
+                    "entity": ent_name,
+                    "date": date,
+                    "event": event,
+                    "confidence": round(conf, 4),
+                })
+
             if content_hash:
                 with _COMBINED_CACHE_LOCK:
                     _COMBINED_CACHE[content_hash] = {
                         "entities": entities,
                         "relationships": relationships,
+                        "timeline": timeline,
                         "summary": summary,
                     }
-            return entities, relationships, summary
+            return entities, relationships, timeline, summary
         except Exception as e:
             if attempt < 2:
                 wait = 2 ** attempt
@@ -360,7 +402,7 @@ def _extract_and_summarize_cached(sanitized: str, path: str, content_hash: str |
 
     # Fallback: try separate calls if combined fails entirely
     log.warning(f"Combined extract+summarize failed for {path}, falling back to separate calls")
-    entities, relationships, summary = [], [], ""
+    entities, relationships, timeline, summary = [], [], [], ""
     try:
         entities, relationships = _extract_entities_cached(sanitized, path, content_hash)
     except Exception as e:
@@ -369,7 +411,7 @@ def _extract_and_summarize_cached(sanitized: str, path: str, content_hash: str |
         summary = _generate_summary_cached(sanitized, content_hash)
     except Exception as e:
         log.warning(f"Summary generation fallback failed for {path}: {e}")
-    return entities, relationships, summary
+    return entities, relationships, timeline, summary
 
 
 def _embed_workers_for_current_machine() -> int:
@@ -579,19 +621,18 @@ def _build_metadata(
     return metadata
 
 
-def _index_note(path: str, content: str | None = None, *,
-                _sanitized: str | None = None, _wc: int | None = None,
-                _content_hash: str | None = None,
-                _links: list[str] | None = None,
-                _is_new: bool = False) -> bool:
-    """Index a single note. Returns True if successful.
+def _prepare_note_data(path: str, content: str | None = None, *,
+                       _sanitized: str | None = None, _wc: int | None = None,
+                       _content_hash: str | None = None,
+                       _links: list[str] | None = None,
+                       _is_new: bool = False) -> dict | None:
+    """Prepare note data for indexing — entity extraction, chunking, delta analysis.
 
-    Internal kwargs (``_sanitized``, ``_wc``, ``_content_hash``, ``_links``,
-    ``_is_new``) avoid redundant work when called from ``run_index()``.
+    Returns a dict with all data needed for ChromaDB upsert, or None if skipped.
+    Does NOT embed or write to ChromaDB (use ``_finalize_note`` for that).
     """
     try:
         raw = obsidian_client.get_note(path) if content is None else content
-
         tags = _extract_tags(raw)
         links = _links if _links is not None else extract_wiki_links(raw)
         fm_fields = _extract_frontmatter_fields(raw)
@@ -599,23 +640,22 @@ def _index_note(path: str, content: str | None = None, *,
         wc = _wc if _wc is not None else _word_count(sanitized)
         if wc < config.skip_min_tokens:
             log.debug(f"Skipped (too short): {path} — {wc} words")
-            return False
+            return None
 
-        # Skip delete_by_path for first-time notes (never indexed before)
-        if not _is_new:
-            chroma_store.delete_by_path(path)
+        title = fm_fields.pop("fm_title", None) or os.path.splitext(os.path.basename(path))[0]
+        mtime = _get_file_mtime(path)
 
-        heading_chunks = chunk_text_heading_aware(sanitized)
-
-        # Combined entity extraction + summary generation (single LLM call, single lock acquisition)
+        # Combined entity extraction + summary generation
         entities = []
         summary = ""
+        timeline = []
         try:
             with _llm_chat_lock:
-                entities, relationships, summary = _extract_and_summarize_cached(sanitized, path, _content_hash)
+                entities, relationships, timeline, summary = _extract_and_summarize_cached(sanitized, path, _content_hash)
         except Exception as e:
             log.warning(f"Entity/summary extraction failed for {path}: {e}")
             relationships = []
+
         entities_str = ""
         if entities:
             serialised = ",".join(f"{e['type']}:{e['name']}" for e in entities)
@@ -641,21 +681,161 @@ def _index_note(path: str, content: str | None = None, *,
                     source_note=path,
                 )
 
-        title = fm_fields.pop("fm_title", None) or os.path.splitext(os.path.basename(path))[0]
-        mtime = _get_file_mtime(path)
+        if timeline:
+            for entry in timeline:
+                entity_store.add_timeline_entry(
+                    entity_name=entry["entity"],
+                    date=entry["date"],
+                    event=entry["event"],
+                    note=path,
+                    confidence=entry.get("confidence", 0.5),
+                )
 
-        # Batch-embed all chunks in a single Ollama API call
-        chunks_text = [chunk for _, chunk in heading_chunks]
-        embeddings = llm_client.batch_embed(chunks_text)
+        # Chunk-level delta analysis
+        heading_chunks = chunk_text_heading_aware(sanitized)
+        new_chunks_text = [chunk for _, chunk in heading_chunks]
+        new_hashes = [_compute_hash(c) for c in new_chunks_text]
+
+        old_hash_to_id: dict[str, str] = {}
+        old_hash_to_idx: dict[str, int] = {}
+        if not _is_new:
+            try:
+                old_ids, old_metas, old_docs = chroma_store.get_chunks_by_path(path)
+                for oid, ometa, odoc in zip(old_ids, old_metas, old_docs, strict=False):
+                    if odoc:
+                        oh = _compute_hash(odoc)
+                        old_hash_to_id[oh] = oid
+                        old_hash_to_idx[oh] = ometa.get("chunk", 0)
+            except Exception:
+                pass
+
+        chunks_to_embed_indices = []
+        embed_indices_set = set()
+        for i, h in enumerate(new_hashes):
+            if h not in old_hash_to_id:
+                chunks_to_embed_indices.append(i)
+                embed_indices_set.add(i)
+
+        old_hashes_set = set(old_hash_to_id)
+        new_hashes_set = set(new_hashes)
+        stale_hashes = old_hashes_set - new_hashes_set
+        stale_ids = [old_hash_to_id[h] for h in stale_hashes if h in old_hash_to_id]
+
+        return {
+            "path": path,
+            "title": title,
+            "mtime": mtime,
+            "tags": tags,
+            "links": links,
+            "fm_fields": fm_fields,
+            "wc": wc,
+            "entities_str": entities_str,
+            "summary": summary,
+            "heading_chunks": heading_chunks,
+            "new_chunks_text": new_chunks_text,
+            "new_hashes": new_hashes,
+            "chunks_to_embed_indices": chunks_to_embed_indices,
+            "embed_indices_set": embed_indices_set,
+            "stale_ids": stale_ids,
+            "old_hash_to_id": old_hash_to_id,
+            "texts_to_embed": [new_chunks_text[i] for i in chunks_to_embed_indices],
+        }
+    except Exception as e:
+        log_error(log, f"FAILED: {path}", exc=e)
+        return None
+
+
+def _finalize_note(prepared: dict, embeddings: list[list[float]], chunk_indices: list[int]) -> bool:
+    """Upsert a prepared note's chunks into ChromaDB with pre-computed embeddings.
+
+    Args:
+        prepared: dict from ``_prepare_note_data``.
+        embeddings: list of embedding vectors aligned with *chunk_indices*.
+        chunk_indices: which chunk positions these embeddings correspond to.
+
+    Returns True if successful.
+    """
+    try:
+        path = prepared["path"]
+        embed_iter = iter(embeddings)
+        embed_indices_set = set(chunk_indices)
+        stale_ids = prepared["stale_ids"]
+        heading_chunks = prepared["heading_chunks"]
+        stale_fallback = False
+
+        # Upsert changed chunks, skip unchanged
         for i, (heading, chunk) in enumerate(heading_chunks):
-            metadata = _build_metadata(path, title, i, wc, heading, tags, links, mtime, entities_str, fm_fields, summary=summary)
-            chroma_store.upsert(path=path, chunk_idx=i, embedding=embeddings[i], metadata=metadata, document=chunk)
+            metadata = _build_metadata(
+                path, prepared["title"], i, prepared["wc"], heading,
+                prepared["tags"], prepared["links"], prepared["mtime"],
+                prepared["entities_str"], prepared["fm_fields"],
+                summary=prepared["summary"],
+            )
+            if i in embed_indices_set:
+                embedding = next(embed_iter)
+                chroma_store.upsert(path=path, chunk_idx=i, embedding=embedding, metadata=metadata, document=chunk)
 
-        log.info(f"Indexed: {path} ({len(heading_chunks)} chunks, tags={tags})")
+        # Delete stale chunks
+        if stale_ids:
+            try:
+                chroma_store._ensure_init()
+                chroma_store._collection.delete(ids=stale_ids)
+                log.debug(f"Delta: removed {len(stale_ids)} stale chunks for {path}")
+            except Exception:
+                stale_fallback = True
+
+        if stale_fallback:
+            chroma_store.delete_by_path(path)
+            for i, (heading, chunk) in enumerate(heading_chunks):
+                metadata = _build_metadata(
+                    path, prepared["title"], i, prepared["wc"], heading,
+                    prepared["tags"], prepared["links"], prepared["mtime"],
+                    prepared["entities_str"], prepared["fm_fields"],
+                    summary=prepared["summary"],
+                )
+                chroma_store.upsert(path=path, chunk_idx=i, embedding=embeddings[i] if i in embed_indices_set else None,
+                                   metadata=metadata, document=chunk)
+
+        if not prepared["texts_to_embed"] and not stale_ids:
+            log.debug(f"Delta: no changes detected for {path}")
+
+        # Store summary embedding
+        if prepared["summary"]:
+            try:
+                summary_store.add(path=path, title=prepared["title"], summary=prepared["summary"])
+            except Exception as e:
+                log.warning(f"Failed to store summary embedding for {path}: {e}")
+
+        log.info(f"Indexed: {path} ({len(heading_chunks)} chunks, tags={prepared['tags']})")
         return True
     except Exception as e:
         log_error(log, f"FAILED: {path}", exc=e)
         return False
+
+
+def _index_note(path: str, content: str | None = None, *,
+                _sanitized: str | None = None, _wc: int | None = None,
+                _content_hash: str | None = None,
+                _links: list[str] | None = None,
+                _is_new: bool = False) -> bool:
+    """Index a single note (prepares, embeds, and writes to ChromaDB).
+
+    Internal kwargs avoid redundant work when called from ``run_index()``.
+    For bulk indexing, ``run_index()`` uses the batch path instead.
+    """
+    prepared = _prepare_note_data(
+        path, content=content,
+        _sanitized=_sanitized, _wc=_wc,
+        _content_hash=_content_hash,
+        _links=_links, _is_new=_is_new,
+    )
+    if prepared is None:
+        return False
+
+    texts = prepared["texts_to_embed"]
+    indices = prepared["chunks_to_embed_indices"]
+    embeddings = llm_client.batch_embed(texts) if texts else []
+    return _finalize_note(prepared, embeddings, indices)
 
 
 def _delete_note(path: str) -> bool:
@@ -707,10 +887,11 @@ def run_index():
 
     log.info(f"Starting index — {len(notes)} notes found")
 
-    # Reset entity store and relationship store (skip if user opted out of entity extraction)
+    # Reset entity store, relationship store, and summary store (skip if user opted out of entity extraction)
     if not SKIP_ENTITIES:
         entity_store.clear()
         entity_relations.clear()
+    summary_store.clear()
 
     # Load stored content hashes for incremental skip
     hash_map = _load_hash_map()
@@ -842,13 +1023,15 @@ def run_index():
             if is_new:
                 new_paths.add(path)
 
-        # Parallel note processing
+        # Batch note processing: Phase 1 — prepare (entity extraction + chunking)
         max_workers = _embed_workers_for_current_machine()
         hash_map_lock = threading.Lock()
-        log.info(f"Processing {len(changed_paths)} changed notes with {max_workers} workers")
+        all_prepared: list[dict] = []
+        prepare_lock = threading.Lock()
+        log.info(f"Preparing {len(changed_paths)} changed notes with {max_workers} workers (phase 1/2)")
 
-        def _process_one(path: str) -> str:
-            """Process a single changed note. Returns 'indexed', 'skipped', or 'failed'."""
+        def _prepare_one(path: str) -> str:
+            """Prepare a single changed note. Returns 'prepared', 'skipped', or 'failed'."""
             try:
                 content = all_contents.get(path)
                 if content is None:
@@ -861,40 +1044,80 @@ def run_index():
                     return "skipped"
 
                 current_hash = content_hashes.get(path) or _compute_hash(content)
-                success = _index_note(
+                prepared = _prepare_note_data(
                     path, content=content,
                     _sanitized=sanitized, _wc=wc, _content_hash=current_hash,
                     _links=links_cache.get(path),
                     _is_new=path in new_paths,
                 )
-                if success:
-                    with hash_map_lock:
-                        hash_map[path] = current_hash
-                        current_mtime = _get_file_mtime(path)
-                        if current_mtime is not None:
-                            mtime_map[path] = current_mtime
-                    return "indexed"
+                if prepared is not None:
+                    prepared["_hash"] = current_hash
+                    prepared["_is_new"] = path in new_paths
+                    with prepare_lock:
+                        all_prepared.append(prepared)
+                    return "prepared"
                 return "failed"
             except Exception as e:
                 log_error(log, f"FAILED: {path}", exc=e)
                 return "failed"
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
-            fut_to_path = {ex.submit(_process_one, p): p for p in changed_paths}
+            fut_to_path = {ex.submit(_prepare_one, p): p for p in changed_paths}
             total_changed = len(changed_paths)
             _proc_log_interval = max(1, total_changed // 10)
             _next_proc_log = _proc_log_interval
             for completed_idx, fut in enumerate(concurrent.futures.as_completed(fut_to_path), 1):
                 status = fut.result()
-                if status == "indexed":
+                if status == "prepared":
                     indexed += 1
                 elif status == "skipped":
                     skipped += 1
                 else:
                     failed += 1
                 if completed_idx >= _next_proc_log or completed_idx == total_changed:
-                    log.info(f"Progress: {completed_idx}/{total_changed} — {indexed} indexed, {skipped} skipped, {failed} failed")
+                    log.info(f"Prepare progress: {completed_idx}/{total_changed} — {indexed} prepared, {skipped} skipped, {failed} failed")
                     _next_proc_log += _proc_log_interval
+
+        # Phase 2 — single cross-note batch embed
+        if all_prepared:
+            all_texts: list[str] = []
+            text_map: list[tuple[int, int]] = []  # (note_idx, chunk_idx_in_note)
+            for note_idx, pn in enumerate(all_prepared):
+                for ci in pn["chunks_to_embed_indices"]:
+                    all_texts.append(pn["new_chunks_text"][ci])
+                    text_map.append((note_idx, ci))
+
+            log.info(f"Batch-embedding {len(all_texts)} chunks across {len(all_prepared)} notes (phase 2/2)")
+            all_embeddings = llm_client.batch_embed(all_texts) if all_texts else []
+
+            # Phase 3 — distribute embeddings and finalize
+            note_embeddings: dict[int, tuple[list[list[float]], list[int]]] = {}
+            for map_idx, (note_idx, ci) in enumerate(text_map):
+                if note_idx not in note_embeddings:
+                    note_embeddings[note_idx] = ([], [])
+                note_embeddings[note_idx][0].append(all_embeddings[map_idx])
+                note_embeddings[note_idx][1].append(ci)
+
+            finalized = 0
+            skipped_final = 0
+            for note_idx, pn in enumerate(all_prepared):
+                emb_list, emb_indices = note_embeddings.get(note_idx, ([], []))
+                success = _finalize_note(pn, emb_list, emb_indices)
+                if success:
+                    with hash_map_lock:
+                        hash_map[pn["path"]] = pn["_hash"]
+                        current_mtime = _get_file_mtime(pn["path"])
+                        if current_mtime is not None:
+                            mtime_map[pn["path"]] = current_mtime
+                    finalized += 1
+                else:
+                    skipped_final += 1
+
+            log.info(f"Finalized: {finalized} notes indexed, {skipped_final} failed in phase 3")
+            # Override phase 1 counts with actual finalize results
+            prepared_count = indexed  # from phase 1
+            indexed = finalized
+            failed = (prepared_count - finalized) + failed
 
     except KeyboardInterrupt:
         interrupted = True

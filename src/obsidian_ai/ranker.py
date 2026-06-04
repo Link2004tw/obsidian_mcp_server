@@ -7,6 +7,7 @@ Thread-safe for concurrent access from MCP workers.
 
 import os
 import threading
+import time
 
 from . import chroma_store, llm_client
 from .logger import get_logger
@@ -21,6 +22,92 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "graph": 0.20,
     "keyword": 0.10,
 }
+
+
+INTENT_WEIGHTS: dict[str, dict[str, float]] = {
+    "entity": {"semantic": 0.25, "entity": 0.55, "graph": 0.15, "keyword": 0.05},
+    "keyword": {"semantic": 0.20, "entity": 0.10, "graph": 0.10, "keyword": 0.60},
+    "graph": {"semantic": 0.20, "entity": 0.20, "graph": 0.50, "keyword": 0.10},
+    "general": {"semantic": 0.40, "entity": 0.30, "graph": 0.20, "keyword": 0.10},
+}
+
+_ENTITY_PATTERNS = [
+    r"^who is\s+",
+    r"^tell me about\s+",
+]
+
+_KEYWORD_PATTERNS = [
+    r"how do (i|you|we)\s+",
+    r"^how to\s+",
+    r"\.\w+",  # file extensions like .py, .md, .json
+    r"\b(config|setup|install|deploy|migrate|build|compile)\b",
+]
+
+_GRAPH_PATTERNS = [
+    r"how does\s+.+\s+relate\s+",
+    r"connection between",
+    r"related to",
+    r"relationship between",
+    r"path (from|between)",
+    r"\blink(s|ed|ing)?\s+(to|between|among)",
+]
+
+
+def detect_intent(query: str) -> str:
+    """Detect query intent for dynamic weight adjustment.
+
+    Returns one of ``"entity"``, ``"keyword"``, ``"graph"``, ``"general"``.
+
+    Uses entity store lookup and regex patterns — no LLM call needed.
+    """
+    q = query.strip()
+    if not q:
+        return "general"
+
+    # 1. Entity match — check if query (or its words) match known entity names
+    try:
+        from . import entity_store
+        entity_hits = entity_store.search(q)
+        if entity_hits:
+            return "entity"
+    except Exception:
+        pass
+
+    # 2. Check multi-word tokens for entity match
+    words = q.split()
+    if len(words) > 2:
+        for i in range(len(words) - 1):
+            bigram = " ".join(words[i:i + 2])
+            try:
+                from . import entity_store
+                if entity_store.search(bigram):
+                    return "entity"
+            except Exception:
+                pass
+
+    # 3. Graph/relationship oriented
+    import re
+    for pat in _GRAPH_PATTERNS:
+        if re.search(pat, q, re.IGNORECASE):
+            return "graph"
+
+    # 4. Keyword oriented
+    for pat in _KEYWORD_PATTERNS:
+        if re.search(pat, q, re.IGNORECASE):
+            return "keyword"
+
+    # 5. Short entity-like queries: "who is X", "tell me about X"
+    #    Only trigger for short queries (≤ 5 words) to avoid false positives
+    if len(words) <= 5:
+        for pat in _ENTITY_PATTERNS:
+            if re.search(pat, q, re.IGNORECASE):
+                return "entity"
+
+    # 6. Short "what is X" → likely entity/concept
+    if len(words) <= 5 and re.search(r"^what is\s+", q, re.IGNORECASE):
+        return "entity"
+
+    return "general"
 
 
 def _truncate_snippet(text: str, max_chars: int = SNIPPET_MAX_CHARS) -> str:
@@ -177,11 +264,16 @@ class Ranker:
         use_graph: bool = False,
         graph_depth: int = 1,
         weights: dict[str, float] | None = None,
+        auto_weights: bool = False,
         where: dict | None = None,
         exclude_tags: list[str] | None = None,
         expand_queries: list[str] | None = None,
         min_similarity: float | None = None,
         expand_entities: bool = False,
+        use_summaries: bool = False,
+        summary_threshold: float = 0.7,
+        use_community_boost: bool = False,
+        community_boost_weight: float = 0.15,
     ) -> list[dict]:
         """Multi-strategy search returning blended, note-level results.
 
@@ -203,17 +295,59 @@ class Ranker:
             expand_entities: if True, when entities are auto-detected in the
                 query, also search for related entities via the entity
                 relationship graph and include their results.
+            use_summaries: if True, include summary-embedding results as
+                a retrieval signal. Summary results above
+                *summary_threshold* are blended with other signals.
+            summary_threshold: minimum similarity (0–1) for a summary
+                result to be included (default 0.7). Only relevant when
+                ``use_summaries=True``.
+            use_community_boost: if True, boost scores of notes that
+                share a graph community with the top-3 semantic results.
+            community_boost_weight: weight for the community proximity
+                boost (default 0.15). Only relevant when
+                ``use_community_boost=True``.
 
         Returns:
             List of dicts with ``path``, ``title``, ``similarity_score``,
             ``matched_by`` (list of signal names), and ``snippet``.
         """
-        from . import entity_store, graph_store, keyword_search
+        from . import entity_store, graph_store, keyword_search, summary_store
+        from .logger import log_search
 
+        _start_time = time.monotonic()
+
+        if auto_weights and weights is None:
+            intent = detect_intent(query)
+            weights = dict(INTENT_WEIGHTS.get(intent, INTENT_WEIGHTS["general"]))
+            log.debug("auto_weights — intent=%s, weights=%s", intent, weights)
         w = self._normalize(weights)
 
         # note_scores maps path -> {score, title, snippet, matched_by}
         note_scores: dict[str, dict] = {}
+
+        # ── 0. Summary-first retrieval ───────────────────────────────
+        if use_summaries:
+            summary_weight = w.get("semantic", 0.4)
+            if summary_weight > 0:
+                try:
+                    for r in summary_store.query(query, n=n):
+                        sim = r["similarity"]
+                        if sim < summary_threshold:
+                            continue
+                        path = r["path"]
+                        entry = note_scores.get(path)
+                        if entry is None:
+                            title = r.get("title", os.path.splitext(os.path.basename(path))[0])
+                            entry = {"score": 0.0, "title": title, "snippet": "", "matched_by": []}
+                            note_scores[path] = entry
+                        entry["score"] += sim * summary_weight
+                        if "summary" not in entry["matched_by"]:
+                            entry["matched_by"].append("summary")
+                        snippet = r.get("summary", "")
+                        if len(snippet) > len(entry["snippet"]):
+                            entry["snippet"] = _truncate_snippet(snippet)
+                except Exception as exc:
+                    log.warning("ranker — summary-first search failed: %s", exc)
 
         # ── 1. Semantic search ──────────────────────────────────────
         if w.get("semantic", 0) > 0:
@@ -345,6 +479,34 @@ class Ranker:
         if not note_scores:
             return []
 
+        # ── 3.5 Community-aware boost ────────────────────────────────
+        if use_community_boost:
+            try:
+                communities = graph_store.label_propagation()
+                if communities:
+                    # Find top-3 semantic results and their communities
+                    semantic_entries = [
+                        (p, info) for p, info in note_scores.items()
+                        if "semantic" in info["matched_by"]
+                    ]
+                    semantic_entries.sort(key=lambda x: x[1]["score"], reverse=True)
+                    top_semantic = semantic_entries[:3]
+                    seed_communities: set[int] = set()
+                    for path, _ in top_semantic:
+                        cid = communities.get(path)
+                        if cid is not None:
+                            seed_communities.add(cid)
+                    if seed_communities:
+                        boost_weight = w.get("graph", 0.2) * community_boost_weight
+                        for path, info in note_scores.items():
+                            cid = communities.get(path)
+                            if cid is not None and cid in seed_communities:
+                                info["score"] += boost_weight
+                                if "community" not in info["matched_by"]:
+                                    info["matched_by"].append("community")
+            except Exception as exc:
+                log.warning("ranker — community boost failed: %s", exc)
+
         # ── 4. Graph traversal (requires seed paths) ────────────────
         if use_graph and w.get("graph", 0) > 0:
             try:
@@ -387,7 +549,104 @@ class Ranker:
             if len(results) >= n:
                 break
 
+        elapsed = (time.monotonic() - _start_time) * 1000
+        all_signals = list({s for r in results for s in r["matched_by"]})
+        log_search(log, query, len(results), all_signals, elapsed)
+
         return results
+
+
+def composite_search(
+    query: str,
+    n: int = 5,
+    retrieval_depth: int = 2,
+    min_similarity: float | None = None,
+) -> list[dict]:
+    """Composite search blending summary, entity, and community signals.
+
+    ``retrieval_depth`` controls which strategies are used:
+
+    * ``1`` — summary embedding search only (note-level recall)
+    * ``2`` — summary + entity-relationship expansion (entity-aware)
+    * ``3`` — summary + entity + community-aware graph traversal
+      (full composite — default for highest recall)
+
+    Returns a deduplicated, ranked list of dicts with keys:
+    ``path``, ``title``, ``snippet``, ``score``, ``matched_by``.
+    """
+    from . import entity_store, graph_store, summary_store
+
+    note_scores: dict[str, dict] = {}
+
+    def _upsert(path: str, score: float, signal: str, snippet: str = ""):
+        entry = note_scores.get(path)
+        if entry is None:
+            entry = {"path": path, "title": "", "score": 0.0, "snippet": "", "matched_by": []}
+            note_scores[path] = entry
+        entry["score"] += score
+        entry["matched_by"].append(signal)
+        if snippet and not entry["snippet"]:
+            entry["snippet"] = _truncate_snippet(snippet)
+
+    # ── Step 1: Summary embedding search ──────────────────────────
+    if retrieval_depth >= 1:
+        try:
+            for r in summary_store.query(query, n=n * 3):
+                _upsert(r["path"], r["similarity"], "summary",
+                        r.get("summary", ""))
+        except Exception:
+            log.debug("composite_search: summary query failed", exc_info=True)
+
+    # ── Step 2: Entity detection + relationship expansion ─────────
+    if retrieval_depth >= 2:
+        try:
+            entity_results = _auto_detect_entities(query)
+            seen_entities: set[str] = set()
+            for r in entity_results:
+                _upsert(r["path"], r.get("confidence", 0.5), "entity")
+                seen_entities.add(r["entity_name"].lower())
+
+            expanded = _expand_entity_names(entity_results)
+            for ent_name in expanded:
+                if ent_name.lower() in seen_entities:
+                    continue
+                seen_entities.add(ent_name.lower())
+                for r in entity_store.search(ent_name):
+                    _upsert(r["path"], r.get("confidence", 0.3) * 0.8,
+                            "entity_relation")
+        except Exception:
+            log.debug("composite_search: entity query failed", exc_info=True)
+
+    # ── Step 3: Community-aware graph traversal ───────────────────
+    if retrieval_depth >= 3:
+        try:
+            seed_paths = list(note_scores.keys())
+            if seed_paths:
+                neighbors = graph_store.community_neighbors(seed_paths)
+                comm_paths: dict[str, str] = {}  # member -> seed source
+                for seed, members in neighbors.items():
+                    for m in members:
+                        if m not in note_scores:
+                            comm_paths.setdefault(m, seed)
+                if comm_paths:
+                    for member, seed in comm_paths.items():
+                        seed_score = note_scores.get(seed, {}).get("score", 0.5)
+                        _upsert(member, seed_score * 0.6, "community")
+        except Exception:
+            log.debug("composite_search: community query failed", exc_info=True)
+
+    # ── Step 4: Sort, threshold, trim ─────────────────────────────
+    results = sorted(note_scores.values(), key=lambda x: x["score"], reverse=True)
+
+    if min_similarity is not None:
+        results = [r for r in results if r["score"] >= min_similarity]
+
+    # Fill in titles from path basenames
+    for r in results:
+        if not r["title"]:
+            r["title"] = os.path.splitext(os.path.basename(r["path"]))[0]
+
+    return results[:n]
 
 
 # ── Module-level singleton ──────────────────────────────────────────
@@ -409,22 +668,31 @@ def search(
     use_graph: bool = False,
     graph_depth: int = 1,
     weights: dict[str, float] | None = None,
+    auto_weights: bool = False,
     where: dict | None = None,
     exclude_tags: list[str] | None = None,
     expand_queries: list[str] | None = None,
     min_similarity: float | None = None,
     expand_entities: bool = False,
+    use_summaries: bool = False,
+    summary_threshold: float = 0.7,
+    use_community_boost: bool = False,
+    community_boost_weight: float = 0.15,
 ) -> list[dict]:
     """Convenience wrapper around ``Ranker.search()`` using the module-level singleton."""
     return _get_ranker().search(
         query=query, n=n,
         use_entities=use_entities, use_graph=use_graph,
         graph_depth=graph_depth,
-        weights=weights,
+        weights=weights, auto_weights=auto_weights,
         where=where, exclude_tags=exclude_tags,
         expand_queries=expand_queries,
         min_similarity=min_similarity,
         expand_entities=expand_entities,
+        use_summaries=use_summaries,
+        summary_threshold=summary_threshold,
+        use_community_boost=use_community_boost,
+        community_boost_weight=community_boost_weight,
     )
 
 

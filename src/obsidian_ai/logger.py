@@ -51,3 +51,11 @@ def log_error(logger: logging.Logger, msg: str, exc: Exception | None = None, **
         full_msg += f"\n  Traceback: {tb_str}"
 
     logger.error(full_msg)
+
+
+def log_search(logger: logging.Logger, query: str, results_count: int,
+               signals: list[str], duration_ms: float):
+    """Structured log line for search operations."""
+    sig_str = ",".join(sorted(set(signals))) if signals else "(none)"
+    logger.info("search | query=%s | results=%s | signals=%s | %.1fms",
+                query[:80], results_count, sig_str, duration_ms)

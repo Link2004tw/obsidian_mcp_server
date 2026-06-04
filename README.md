@@ -92,15 +92,16 @@ All commands communicate with the MCP server via stdio — same code path as any
 
 ---
 
-## MCP Tools (57 total)
+## MCP Tools (67 total)
 
 All tools that accept a `path` parameter auto-normalize it — you can pass absolute paths or vault-relative paths interchangeably. The vault prefix is stripped automatically.
 
 ### Search & Retrieval
 | Tool | Description |
 |------|-------------|
-| `search_notes` | Semantic search across indexed notes with metadata filters |
+| `search_notes` | Semantic search with metadata filters, optional auto-rewrite, TTL-cached query expansion |
 | `batch_search` | Run multiple searches in one call |
+| `composite_search` | High-recall composite search (summary + entity + community) |
 | `retrieve_notes` | Multi-strategy retrieval (semantic + entity + graph) |
 | `find_duplicate_notes` | Find near-duplicate notes via embedding similarity |
 | `search_by_tags` | Find notes by YAML frontmatter tags |
@@ -111,7 +112,7 @@ All tools that accept a `path` parameter auto-normalize it — you can pass abso
 | Tool | Description |
 |------|-------------|
 | `read_note` | Fetch full note content |
-| `write_note` | Create or overwrite a note |
+| `write_note` | Create or overwrite a note (YAML-validated) |
 | `list_all_notes` | List all note paths in the vault |
 | `list_folder` | List entries directly in a folder (non-recursive) |
 | `list_folder_deep` | List all notes in a folder (recursive) |
@@ -124,6 +125,7 @@ All tools that accept a `path` parameter auto-normalize it — you can pass abso
 | `remove_tags` | Remove specific tags from YAML frontmatter |
 | `set_tags` | Replace all tags on a note |
 | `batch_tag_notes` | Add tags to multiple notes at once |
+| `tag_notes` | Auto-suggest and apply tags via LLM |
 
 ### Wiki-Link Graph
 | Tool | Description |
@@ -135,9 +137,11 @@ All tools that accept a `path` parameter auto-normalize it — you can pass abso
 | `get_orphan_notes` | Find notes with no wiki-links |
 | `get_graph_stats` | Graph statistics (nodes, edges, hubs, isolates) |
 | `get_communities` | Detect communities via label propagation |
+| `get_note_community` | Show which community a note belongs to |
 | `multi_hop_traversal` | BFS graph traversal from a seed note |
 | `related_notes` | Find related notes via semantic + graph proximity |
 | `export_graph` | Export wiki-link graph in DOT/JSON |
+| `get_shortest_path` | Find shortest path between two notes in the graph |
 
 ### LLM-Powered
 | Tool | Description |
@@ -145,7 +149,6 @@ All tools that accept a `path` parameter auto-normalize it — you can pass abso
 | `ask_vault` | Ask a question, get an LLM-powered answer |
 | `ask_agent` | Route a query automatically to the best tool |
 | `summarize_topic` | LLM-generated consolidated summary of a topic |
-| `tag_notes` | Auto-suggest and apply tags via LLM |
 
 ### Entity System
 | Tool | Description |
@@ -153,6 +156,17 @@ All tools that accept a `path` parameter auto-normalize it — you can pass abso
 | `search_entities` | Find notes mentioning an entity |
 | `get_note_entities` | Return all entities found in a note |
 | `get_entity_types` | List all entity types in the index |
+| `get_entity_aliases` | List aliases for an entity |
+| `merge_entities` | Merge duplicate entities in the index |
+| `entity_timeline` | Show timeline of entity mentions across notes |
+| `related_entities` | Find related entities via relationship graph |
+| `get_ranking_weights` | View current ranking weights for entity/keyword/graph |
+| `set_ranking_weights` | Customize ranking weights |
+
+### Clustering
+| Tool | Description |
+|------|-------------|
+| `get_clusters` | Return semantic clusters of notes based on embedding similarity |
 
 ### Health
 | Tool | Description |
@@ -177,6 +191,18 @@ All tools that accept a `path` parameter auto-normalize it — you can pass abso
 | `sync_todos` | Recalculate todo counts |
 | `get_todo_stats` | Aggregated todo statistics |
 | `ensure_todo_file` | Create todos.md if missing |
+| `get_todos_by_priority` | List todos grouped by priority |
+| `add_todo_from_natural_language` | Add todo from plain text |
+| `suggest_task_priority` | Suggest priority for a task via LLM |
+| `suggest_due_date` | Suggest due date for a task via LLM |
+| `suggest_task_splitting` | Suggest how to split a large task |
+| `get_overdue_summary` | Summary of all overdue todos |
+| `estimate_completion_date` | Estimate completion date for a project |
+| `get_todos_for_note` | Find todos linked to a specific note |
+| `get_notes_for_todo` | Find notes linked to a specific todo |
+| `link_todo_to_notes` | Link a todo to one or more notes |
+| `ask_vault_about_todo` | Ask about a specific todo in vault context |
+| `ask_vault_about_todos` | Ask a question about all todos |
 
 ---
 
@@ -199,8 +225,17 @@ obsidian_mcp_server_test/
 │       ├── graph_store.py           # Wiki-link graph storage and traversal
 │       ├── wiki_links.py            # Wiki-link parsing utilities
 │       ├── keyword_search.py        # Keyword-based search over notes
-│       ├── todos.py                 # Todo management (get/add/complete/update/delete)
-│       └── mcp_server.py            # FastMCP server (57 tools)
+│       ├── clustering.py            # Semantic clustering of notes
+│       ├── todos.py                 # Todo management (20 tools)
+│       ├── tools/                   # MCP tool submodules
+│       │   ├── __init__.py          # Tool registration
+│       │   ├── _shared.py           # Shared helpers (expand, rewrite, filter)
+│       │   ├── search.py            # 11 search/retrieval tools
+│       │   ├── notes.py             # 14 note CRUD tools
+│       │   ├── graph.py             # 20 entity/graph tools
+│       │   ├── todos.py             # 20 todo management tools
+│       │   └── misc.py              # get_clusters, health_check
+│       └── mcp_server.py            # FastMCP server (67 tools)
 ├── src/data/                        # Empty data directory (reserved)
 ├── docs/                            # User documentation
 │   ├── setup.md
@@ -219,11 +254,13 @@ obsidian_mcp_server_test/
 │   └── word_limit_fix.md
 ├── data/                            # Persistent data
 │   ├── chroma_db/                   # Vector database (gitignored)
+│   ├── clusters.json
 │   ├── combined_cache.json
 │   ├── content_hashes.json
 │   ├── embed_cache.json
 │   ├── entities.json
 │   ├── entity_cache.json
+│   ├── expand_cache.json
 │   ├── graph.json
 │   ├── mtime_map.json
 │   ├── note_paths.json
@@ -240,10 +277,14 @@ obsidian_mcp_server_test/
 │   ├── graph.html
 │   ├── graph.json
 │   └── manifest.json
-├── tests/                           # Unit tests (244+)
+├── tests/                           # Unit tests (381+)
 │   ├── test_chroma_store.py
+│   ├── test_clustering.py
 │   ├── test_config.py
+│   ├── test_dashboard.py
+│   ├── test_entity_relations.py
 │   ├── test_entity_store.py
+│   ├── test_eval.py
 │   ├── test_frontmatter.py
 │   ├── test_graph_store.py
 │   ├── test_indexer.py
@@ -254,6 +295,8 @@ obsidian_mcp_server_test/
 │   ├── test_modules.py
 │   ├── test_obsidian_client.py
 │   ├── test_pipelines.py
+│   ├── test_ranker.py
+│   ├── test_summary_store.py
 │   ├── test_todos.py
 │   └── test_wiki_links.py
 ├── .claude/                         # Claude agent settings
@@ -444,6 +487,7 @@ mcpServers:
 | `CHROMA_PATH` | `data/chroma_db` | ChromaDB persistent storage path |
 | `READ_WORKERS` | `6` | Parallel note readers for initial fetch |
 | `LLM_CHAT_CONCURRENCY` | `2` | Max concurrent Ollama chat calls during indexing |
+| `EXPAND_CACHE_TTL` | `3600` | TTL in seconds for query expansion cache |
 
 ---
 

@@ -43,6 +43,7 @@ embed_worker_floor = 2
 embed_worker_ceil = 6
 read_workers = int(os.getenv("READ_WORKERS", "6"))
 llm_chat_concurrency = int(os.getenv("LLM_CHAT_CONCURRENCY", "2"))
+expand_cache_ttl = int(os.getenv("EXPAND_CACHE_TTL", "3600"))
 
 # Ranking weights for the unified Ranker (semantic, entity, graph, keyword)
 # Sum does not need to be 1.0 — the Ranker normalises them internally.

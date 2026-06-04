@@ -112,7 +112,7 @@ def test_build_search_where_combined():
 # ── add_tags tool ──────────────────────────────────────────────────
 
 
-@patch("obsidian_ai.mcp_server.obsidian_client")
+@patch("obsidian_ai.tools.notes.obsidian_client")
 def test_add_tags(mock_obsidian):
     mock_obsidian.get_note.return_value = "---\ntags:\n  - existing\n---\nBody"
     result = mcp_server.add_tags("test.md", ["new-tag"])
@@ -121,7 +121,7 @@ def test_add_tags(mock_obsidian):
     mock_obsidian.put_note.assert_called_once()
 
 
-@patch("obsidian_ai.mcp_server.obsidian_client")
+@patch("obsidian_ai.tools.notes.obsidian_client")
 def test_add_tags_error(mock_obsidian):
     mock_obsidian.get_note.side_effect = Exception("not found")
     result = mcp_server.add_tags("missing.md", ["tag"])
@@ -131,7 +131,7 @@ def test_add_tags_error(mock_obsidian):
 # ── remove_tags tool ───────────────────────────────────────────────
 
 
-@patch("obsidian_ai.mcp_server.obsidian_client")
+@patch("obsidian_ai.tools.notes.obsidian_client")
 def test_remove_tags(mock_obsidian):
     mock_obsidian.get_note.return_value = "---\ntags:\n  - keep\n  - remove\n---\nBody"
     result = mcp_server.remove_tags("test.md", ["remove"])
@@ -142,7 +142,7 @@ def test_remove_tags(mock_obsidian):
     assert "keep" in content
 
 
-@patch("obsidian_ai.mcp_server.obsidian_client")
+@patch("obsidian_ai.tools.notes.obsidian_client")
 def test_remove_tags_error(mock_obsidian):
     mock_obsidian.get_note.side_effect = Exception("fail")
     result = mcp_server.remove_tags("x.md", ["tag"])
@@ -152,7 +152,7 @@ def test_remove_tags_error(mock_obsidian):
 # ── set_tags tool ──────────────────────────────────────────────────
 
 
-@patch("obsidian_ai.mcp_server.obsidian_client")
+@patch("obsidian_ai.tools.notes.obsidian_client")
 def test_set_tags(mock_obsidian):
     mock_obsidian.get_note.return_value = "---\ntags:\n  - old\n---\nBody"
     result = mcp_server.set_tags("test.md", ["new1", "new2"])
@@ -164,7 +164,7 @@ def test_set_tags(mock_obsidian):
     assert "old" not in content
 
 
-@patch("obsidian_ai.mcp_server.obsidian_client")
+@patch("obsidian_ai.tools.notes.obsidian_client")
 def test_set_tags_error(mock_obsidian):
     mock_obsidian.get_note.side_effect = Exception("fail")
     result = mcp_server.set_tags("x.md", ["tag"])
@@ -174,7 +174,7 @@ def test_set_tags_error(mock_obsidian):
 # ── read_note tool ─────────────────────────────────────────────────
 
 
-@patch("obsidian_ai.mcp_server.obsidian_client")
+@patch("obsidian_ai.tools.notes.obsidian_client")
 def test_read_note(mock_obsidian):
     mock_obsidian.get_note.return_value = "# Hello\nContent here"
     result = mcp_server.read_note("test.md")
@@ -182,7 +182,7 @@ def test_read_note(mock_obsidian):
     mock_obsidian.get_note.assert_called_once_with("test.md")
 
 
-@patch("obsidian_ai.mcp_server.obsidian_client")
+@patch("obsidian_ai.tools.notes.obsidian_client")
 def test_read_note_error(mock_obsidian):
     mock_obsidian.get_note.side_effect = Exception("404")
     result = mcp_server.read_note("missing.md")
@@ -192,14 +192,14 @@ def test_read_note_error(mock_obsidian):
 # ── list_all_notes tool ────────────────────────────────────────────
 
 
-@patch("obsidian_ai.mcp_server.obsidian_client")
+@patch("obsidian_ai.tools.notes.obsidian_client")
 def test_list_all_notes(mock_obsidian):
     mock_obsidian.list_all_notes.return_value = ["a.md", "b.md"]
     result = mcp_server.list_all_notes()
     assert result == ["a.md", "b.md"]
 
 
-@patch("obsidian_ai.mcp_server.obsidian_client")
+@patch("obsidian_ai.tools.notes.obsidian_client")
 def test_list_all_notes_error(mock_obsidian):
     mock_obsidian.list_all_notes.side_effect = Exception("fail")
     result = mcp_server.list_all_notes()
@@ -210,7 +210,7 @@ def test_list_all_notes_error(mock_obsidian):
 # ── list_folder tool ───────────────────────────────────────────────
 
 
-@patch("obsidian_ai.mcp_server.obsidian_client")
+@patch("obsidian_ai.tools.notes.obsidian_client")
 def test_list_folder(mock_obsidian):
     mock_obsidian.list_folder.return_value = ["notes/a.md", "notes/sub/"]
     result = mcp_server.list_folder("notes/")
@@ -220,14 +220,14 @@ def test_list_folder(mock_obsidian):
 # ── write_note tool ────────────────────────────────────────────────
 
 
-@patch("obsidian_ai.mcp_server.obsidian_client")
+@patch("obsidian_ai.tools.notes.obsidian_client")
 def test_write_note(mock_obsidian):
     result = mcp_server.write_note("new.md", "# Title\nContent")
     assert "Written" in result or "wrote" in result.lower() or "success" in result.lower()
     mock_obsidian.put_note.assert_called_once_with("new.md", "# Title\nContent")
 
 
-@patch("obsidian_ai.mcp_server.obsidian_client")
+@patch("obsidian_ai.tools.notes.obsidian_client")
 def test_write_note_error(mock_obsidian):
     mock_obsidian.put_note.side_effect = Exception("fail")
     result = mcp_server.write_note("x.md", "content")
@@ -237,7 +237,7 @@ def test_write_note_error(mock_obsidian):
 # ── create_backlink tool ───────────────────────────────────────────
 
 
-@patch("obsidian_ai.mcp_server.obsidian_client")
+@patch("obsidian_ai.tools.notes.obsidian_client")
 def test_create_backlink(mock_obsidian):
     mock_obsidian.get_note.side_effect = ["# A\nContent A", "# B\nContent B"]
     result = mcp_server.create_backlink("a.md", "b.md")
@@ -246,7 +246,7 @@ def test_create_backlink(mock_obsidian):
     assert mock_obsidian.put_note.call_count == 2
 
 
-@patch("obsidian_ai.mcp_server.obsidian_client")
+@patch("obsidian_ai.tools.notes.obsidian_client")
 def test_create_backlink_already_exists(mock_obsidian):
     """When [[b]] is already in note A, it should not be added again.
     Note: the function matches by display name ([[b]]), not full path ([[b.md]])."""
@@ -260,7 +260,7 @@ def test_create_backlink_already_exists(mock_obsidian):
 # ── get_index_stats tool ───────────────────────────────────────────
 
 
-@patch("obsidian_ai.mcp_server.chroma_store")
+@patch("obsidian_ai.tools.search.chroma_store")
 def test_get_index_stats(mock_chroma):
     mock_chroma.get_index_stats.return_value = {"total_chunks": 100, "unique_notes": 50}
     result = mcp_server.get_index_stats()
@@ -271,18 +271,18 @@ def test_get_index_stats(mock_chroma):
 # ── _expand_query ──────────────────────────────────────────────────
 
 
-@patch("obsidian_ai.mcp_server.llm_client")
+@patch("obsidian_ai.tools._shared.llm_client")
 def test_expand_query(mock_llm):
-    mcp_server._expand_query.cache_clear()
+    mcp_server._EXPAND_QUERY_CACHE.clear()
     mock_llm.chat.return_value = "synonym one\nsynonym two\nrelated concept"
     result = mcp_server._expand_query("test query")
     assert len(result) == 3
     assert "synonym one" in result
 
 
-@patch("obsidian_ai.mcp_server.llm_client")
+@patch("obsidian_ai.tools._shared.llm_client")
 def test_expand_query_empty(mock_llm):
-    mcp_server._expand_query.cache_clear()
+    mcp_server._EXPAND_QUERY_CACHE.clear()
     mock_llm.chat.return_value = ""
     result = mcp_server._expand_query("query")
     assert result == []
@@ -291,8 +291,8 @@ def test_expand_query_empty(mock_llm):
 # ── Entity Tools ────────────────────────────────────────────────────
 
 
-@patch("obsidian_ai.mcp_server.chroma_store")
-@patch("obsidian_ai.mcp_server.entity_store")
+@patch("obsidian_ai.tools.graph.chroma_store")
+@patch("obsidian_ai.tools.graph.entity_store")
 def test_search_entities_by_name(mock_entity_store, mock_chroma):
     mock_chroma._collection = None
     mock_entity_store.search.return_value = [
@@ -307,8 +307,8 @@ def test_search_entities_by_name(mock_entity_store, mock_chroma):
     assert result[0]["entity_type"] == "Hardware"
 
 
-@patch("obsidian_ai.mcp_server.chroma_store")
-@patch("obsidian_ai.mcp_server.entity_store")
+@patch("obsidian_ai.tools.graph.chroma_store")
+@patch("obsidian_ai.tools.graph.entity_store")
 def test_search_entities_empty(mock_entity_store, mock_chroma):
     mock_chroma._collection = None
     mock_entity_store.search.return_value = []
@@ -316,8 +316,8 @@ def test_search_entities_empty(mock_entity_store, mock_chroma):
     assert result == []
 
 
-@patch("obsidian_ai.mcp_server.chroma_store")
-@patch("obsidian_ai.mcp_server.entity_store")
+@patch("obsidian_ai.tools.graph.chroma_store")
+@patch("obsidian_ai.tools.graph.entity_store")
 def test_search_entities_with_type_filter(mock_entity_store, mock_chroma):
     mock_chroma._collection = None
     mock_entity_store.search.return_value = [
@@ -328,8 +328,8 @@ def test_search_entities_with_type_filter(mock_entity_store, mock_chroma):
     assert len(result) == 1
 
 
-@patch("obsidian_ai.mcp_server.chroma_store")
-@patch("obsidian_ai.mcp_server.entity_store")
+@patch("obsidian_ai.tools.graph.chroma_store")
+@patch("obsidian_ai.tools.graph.entity_store")
 def test_get_note_entities(mock_entity_store, mock_chroma):
     mock_chroma._collection = None
     mock_entity_store.get_note_entities.return_value = [
@@ -351,10 +351,10 @@ def test_get_entity_types():
 # ── health_check ───────────────────────────────────────────────────
 
 
-@patch("obsidian_ai.mcp_server.llm_client")
-@patch("obsidian_ai.mcp_server.obsidian_client")
-@patch("obsidian_ai.mcp_server.chroma_store")
-@patch("obsidian_ai.mcp_server.config")
+@patch("obsidian_ai.tools.misc.llm_client")
+@patch("obsidian_ai.tools.misc.obsidian_client")
+@patch("obsidian_ai.tools.misc.chroma_store")
+@patch("obsidian_ai.tools.misc.config")
 def test_health_check(mock_config, mock_chroma, mock_obsidian, mock_llm):
     mock_config.ollama_embed_model = "nomic-embed-text"
     mock_config.ollama_chat_model = "qwen3:8b"

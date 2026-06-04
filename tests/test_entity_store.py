@@ -272,3 +272,98 @@ def test_merge_entities():
         assert store.merge("ESP32", "Nonexistent") is None
     finally:
         os.unlink(path)
+
+
+# ── Timeline ────────────────────────────────────────────────────────
+
+
+def test_timeline_add_entry():
+    store, path = _make_store()
+    try:
+        store.add("Alice", "Person", 0.9, "note1.md")
+        store.add_timeline_entry("Alice", "2024-01", "Started ProjectX", note="note1.md")
+        result = store.get_timeline("Alice")
+        assert result is not None
+        assert len(result) == 1
+        assert result[0]["date"] == "2024-01"
+        assert result[0]["event"] == "Started ProjectX"
+    finally:
+        os.unlink(path)
+
+
+def test_timeline_multiple_entries_sorted():
+    store, path = _make_store()
+    try:
+        store.add("Alice", "Person", 0.9, "note1.md")
+        store.add_timeline_entry("Alice", "2024-06", "Became team lead", note="note2.md")
+        store.add_timeline_entry("Alice", "2024-01", "Started ProjectX", note="note1.md")
+        store.add_timeline_entry("Alice", "2024-03", "First prototype", note="note3.md")
+        result = store.get_timeline("Alice")
+        assert result is not None
+        assert len(result) == 3
+        assert result[0]["date"] == "2024-01"
+        assert result[1]["date"] == "2024-03"
+        assert result[2]["date"] == "2024-06"
+    finally:
+        os.unlink(path)
+
+
+def test_timeline_nonexistent_entity():
+    store, path = _make_store()
+    try:
+        result = store.get_timeline("Nonexistent")
+        assert result is None
+    finally:
+        os.unlink(path)
+
+
+def test_timeline_date_filter():
+    store, path = _make_store()
+    try:
+        store.add("Alice", "Person", 0.9, "note1.md")
+        store.add_timeline_entry("Alice", "2024-01", "Started", note="n1.md")
+        store.add_timeline_entry("Alice", "2024-06", "Milestone", note="n2.md")
+        store.add_timeline_entry("Alice", "2024-12", "Finished", note="n3.md")
+        result = store.get_timeline("Alice", date_from="2024-03", date_to="2024-09")
+        assert result is not None
+        assert len(result) == 1
+        assert result[0]["event"] == "Milestone"
+    finally:
+        os.unlink(path)
+
+
+def test_timeline_search_by_alias():
+    store, path = _make_store()
+    try:
+        store.add("Alice", "Person", 0.9, "note1.md", aliases=["Ali", "A"])
+        store.add_timeline_entry("Alice", "2024-01", "Started", note="n1.md")
+        result = store.get_timeline("Ali")
+        assert result is not None
+        assert len(result) == 1
+    finally:
+        os.unlink(path)
+
+
+def test_timeline_deduplicate():
+    store, path = _make_store()
+    try:
+        store.add("Alice", "Person", 0.9, "note1.md")
+        store.add_timeline_entry("Alice", "2024-01", "Started", note="n1.md", confidence=0.8)
+        store.add_timeline_entry("Alice", "2024-01", "Started", note="n1.md", confidence=0.9)
+        result = store.get_timeline("Alice")
+        assert result is not None
+        assert len(result) == 1
+        assert result[0]["confidence"] == 0.9
+    finally:
+        os.unlink(path)
+
+
+def test_timeline_empty_for_entity():
+    store, path = _make_store()
+    try:
+        store.add("Alice", "Person", 0.9, "note1.md")
+        result = store.get_timeline("Alice")
+        assert result is not None
+        assert result == []
+    finally:
+        os.unlink(path)

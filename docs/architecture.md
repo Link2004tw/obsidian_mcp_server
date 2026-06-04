@@ -8,13 +8,14 @@ The system reads notes from Obsidian, embeds them as semantic vectors, and store
 Agent (Goose / Claude / Cursor / opencode)
         │
         ▼
-    mcp_server.py ──── FastMCP (stdio) ──── 57 tools
+    mcp_server.py ──── FastMCP (stdio) ──── 67 tools
     ├── Search & Retrieval (search_notes, batch_search, retrieve_notes, ...)
     ├── Read & Write (read_note, write_note, list_all_notes, ...)
     ├── Tag Management (add_tags, remove_tags, set_tags, tag_notes, ...)
     ├── Entity System (search_entities, get_note_entities, ...)
     ├── Graph (create_backlink, related_notes, communities, ...)
     ├── LLM-Powered (ask_vault, summarize_topic, ask_agent, ...)
+    ├── Clustering (get_clusters)
     ├── Index Management (sync_index, switch_embedding_model, ...)
     └── Todo Management (add_todo, get_todos, complete_todo, ...)
         │
@@ -57,7 +58,7 @@ Embeddings are cached in memory by text hash. Chat requests are limited to 1 con
 ### chroma_store.py
 Local ChromaDB persistence layer. Provides:
 - `upsert`, `delete_by_path`, `get_by_path`, `get_by_title`, `query` — core CRUD
-- `get_all_documents`, `get_metadata_by_ids` — bulk access
+- `get_all_documents`, `get_all_embeddings`, `get_metadata_by_ids` — bulk access
 - `find_duplicate_notes` — semantic dedup via embedding similarity
 - `search_by_tags` — tag-based lookup via client-side filtering (workaround for ChromaDB `$contains` bug)
 - `get_index_stats` — chunk and note counts
@@ -84,25 +85,26 @@ In-memory wiki-link graph built during indexing. Dict-based adjacency list (`_ad
 - Entity node support (`__entity:{type}:{name}`), excluded from stats/export
 
 ### indexer.py
-Indexing pipeline with incremental updates and file watcher. Pipeline:
-1. Fetch all note paths from Obsidian
-2. For each note: get content, skip if under 20 words
-3. Delete old chunks from ChromaDB (for re-indexing)
-4. Split content into chunks (heading-aware, 500-word with 100-word overlap)
-5. Extract entities via LLM (cached per content hash per run)
-6. Generate summary via LLM (cached per content hash, stored in chunk-0 metadata)
-7. Embed each chunk, store in ChromaDB with full metadata
+Indexing pipeline with incremental updates and file watcher. Three-phase batch embedding for efficiency:
+1. **Fetch** all note paths from Obsidian
+2. **Phase 1 — Prepare:** For each note, get content, skip if under 20 words, delete old chunks, split into chunks (heading-aware, 500-word with 100-word overlap), extract entities via LLM (cached), generate summary via LLM (cached), check delta hashes (skip unchanged chunks).
+3. **Phase 2 — Batch Embed:** All prepared chunks are embedded in a single batch call to Ollama (faster than per-note embedding).
+4. **Phase 3 — Finalize:** Store embedded chunks in ChromaDB with full metadata.
 
 Supports `SKIP_ENTITIES` and `SKIP_SUMMARIES` flags to skip LLM-dependent steps. Uses `_llm_chat_lock` semaphore to limit concurrent LLM calls during parallel indexing.
 
 ### pipelines.py
 LLM-powered pipelines:
-- `query()` — search → fetch content → LLM answers using vault context
+- `query()` — search → fetch content → LLM answers using vault context (supports `auto_rewrite`)
 - `tag_notes()` — search → LLM suggests tags → auto-applies via `add_tags`
-- `summarize_topic()` — multi-note LLM summary
+- `summarize_topic()` — multi-note LLM summary (supports `auto_rewrite`)
+- `retrieve()` — multi-strategy retrieval pipeline (supports `auto_weights`, `auto_rewrite`)
 - `extract_entities()` — entity extraction (cached, with retry)
-- `expand_query()` — LLM query expansion for broader search
+- `expand_query()` — LLM query expansion for broader search (TTL-cached)
+- `_rewrite_query()` — rewrites queries using known vault terminology (entities, titles)
+- `_get_vault_terminology()` — collects entity names and note titles for query context
 - `route_query()` — agentic tool routing (`AGENT_SYSTEM` prompt with 6 tools)
+- `detect_intent()` — auto-detects query intent (entity, keyword, or graph-focused)
 
 All pipelines use `truncate_to_budget()` to stay within context limits. Summary from chunk-0 metadata is injected into prompts when available.
 
@@ -112,8 +114,17 @@ Wiki-link parsing and normalization. Extracts `[[wikilinks]]` from markdown text
 ### frontmatter.py
 YAML frontmatter parsing and manipulation. Used by tag operations.
 
+### clustering.py
+Semantic clustering module for grouping notes by meaning. Connected-components clustering based on embedding cosine similarity. Provides:
+- `get_clusters()` — return clusters with auto-generated labels
+- TTL-cached results persisted to `data/clusters.json`
+- Configurable similarity threshold
+- Dashboard integration for visual exploration
+
+Uses `chroma_store.get_all_embeddings()` to fetch embedding vectors. Has zero additional Python dependencies (pure NumPy/math).
+
 ### mcp_server.py
-FastMCP server exposing 57 vault tools via stdio transport. All path parameters are auto-normalized (absolute or vault-relative). Includes a `health_check` tool for backend service status. Wraps all other modules for agent access. Logs all tool calls to `mcp_calls.log`.
+FastMCP server exposing 67 vault tools via stdio transport. All path parameters are auto-normalized (absolute or vault-relative). Includes a `health_check` tool for backend service status. Wraps all other modules for agent access. Logs all tool calls to `mcp_calls.log`.
 
 ## Data Flow
 
@@ -124,7 +135,7 @@ FastMCP server exposing 57 vault tools via stdio transport. All path parameters 
                                │ MCP (stdio)
                                ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                      mcp_server.py (57 tools)                    │
+│                      mcp_server.py (67 tools)                    │
 └────────┬─────────────────────────┬───────────────────────────────┘
          │                         │
          ▼                         ▼
