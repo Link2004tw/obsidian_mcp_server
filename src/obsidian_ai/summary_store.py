@@ -36,8 +36,12 @@ def ensure_init():
 
 def clear():
     ensure_init()
-    _collection.delete(ids=_collection.get()["ids"])
-    log.info("Summary store cleared")
+    ids = _collection.get()["ids"]
+    if ids:
+        _collection.delete(ids=ids)
+        log.info("Summary store cleared — %d entries", len(ids))
+    else:
+        log.info("Summary store already empty")
 
 
 def add(path: str, title: str, summary: str) -> None:

@@ -3,8 +3,6 @@
     "Me/Courses/Cyber security courses.md": [],
     "Me/Courses/Data analyst courses.md": [],
     "Me/Death.md": [],
-    "Me/My growth Journey.md": [],
-    "Me/Friends/Favourite Lists/Maria.md": [],
     "Me/Notes/Ba2olak eh.md": [
       "Me/Death.md"
     ],
@@ -15,12 +13,14 @@
     "copilot/copilot-conversations/Growth_Journey_Reflection@20260324_192850.md": [
       "Me/My growth Journey.md"
     ],
+    "Me/My growth Journey.md": [],
     "copilot/copilot-conversations/Poem_and_Its_Intended_Audience@20260529_150217.md": [
       "Me/Friends/Favourite Lists/Maria.md",
       "Me/My growth Journey.md",
       "Me/To maria.md"
     ],
     "Me/To maria.md": [],
+    "Me/Friends/Favourite Lists/Maria.md": [],
     "copilot/copilot-conversations/Seeking_Information,_Feeling_Fear@20260513_120038.md": [
       "Me/Poems/I am still afraid.md",
       "Me/Quotes/Music Quotes.md",
@@ -60,6 +60,7 @@
     "data analyst courses": "Me/Courses/Data analyst courses.md",
     "road map for ai and cyber security": "Me/Courses/Road map for ai and cyber security.md",
     "road map for data analyst": "Me/Courses/Road map for data analyst.md",
+    "2025-01-23": "Me/Daily/2025-01-23.md",
     "death": "Me/Death.md",
     "abram": "Me/Friends/Favourite Lists/Abram.md",
     "figary": "Me/Friends/Favourite Lists/Figary.md",
@@ -70,20 +71,19 @@
     "pavly": "Me/Friends/Favourite Lists/Pavly.md",
     "youka": "Me/Friends/Favourite Lists/Youka.md",
     "youssef magued": "Me/Friends/Favourite Lists/youssef magued.md",
+    "games i want to play": "Me/Games I want to play.md",
     "general todo list (todoist)": "Me/General Todo list (Todoist).md",
     "general todo list": "Me/General Todo list.md",
-    "kindle": "Me/My Own Projects/Kindle.md",
-    "project ideas": "Me/My Own Projects/Project Ideas.md",
-    "projects": "Me/My Own Projects/Projects.md",
-    "my growth journey": "Me/My growth Journey.md",
-    "2025-01-23": "Me/Daily/2025-01-23.md",
-    "games i want to play": "Me/Games I want to play.md",
     "arms": "Me/Gym/Arms.md",
     "back": "Me/Gym/Back.md",
     "chest": "Me/Gym/Chest.md",
     "legs": "Me/Gym/Legs.md",
     "shoulder": "Me/Gym/Shoulder.md",
     "how not to kill yourself": "Me/How not to kill yourself.md",
+    "kindle": "Me/My Own Projects/Kindle.md",
+    "project ideas": "Me/My Own Projects/Project Ideas.md",
+    "projects": "Me/My Own Projects/Projects.md",
+    "my growth journey": "Me/My growth Journey.md",
     "names": "Me/Names.md",
     "ay 7aga": "Me/Notes/Ay 7aga.md",
     "ba2olak eh": "Me/Notes/Ba2olak eh.md",

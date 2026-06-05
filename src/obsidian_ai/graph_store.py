@@ -607,6 +607,10 @@ def add_edge(source: str, target: str) -> None:
     _get_store().add_edge(source, target)
 
 
+def add_entity_edge(entity_type: str, entity_name: str, note_path: str) -> None:
+    _get_store().add_entity_edge(entity_type, entity_name, note_path)
+
+
 def rename_node(old: str, new: str) -> None:
     _get_store().rename_node(old, new)
 

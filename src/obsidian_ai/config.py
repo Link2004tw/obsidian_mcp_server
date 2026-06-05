@@ -39,10 +39,12 @@ todo_file = os.getenv("TODO_FILE", "todos.md")
 skip_min_tokens = 20
 chunk_size = 500
 chunk_overlap = 100
-embed_worker_floor = 2
-embed_worker_ceil = 6
-read_workers = int(os.getenv("READ_WORKERS", "6"))
-llm_chat_concurrency = int(os.getenv("LLM_CHAT_CONCURRENCY", "2"))
+embed_worker_floor = int(os.getenv("EMBED_WORKER_FLOOR", "1"))
+embed_worker_ceil = int(os.getenv("EMBED_WORKER_CEIL", "2"))
+read_workers = int(os.getenv("READ_WORKERS", "2"))
+llm_chat_concurrency = int(os.getenv("LLM_CHAT_CONCURRENCY", "1"))
+index_batch_size = int(os.getenv("INDEX_BATCH_SIZE", "50"))
+llm_call_delay = float(os.getenv("LLM_CALL_DELAY", "0.5"))
 expand_cache_ttl = int(os.getenv("EXPAND_CACHE_TTL", "3600"))
 
 # Ranking weights for the unified Ranker (semantic, entity, graph, keyword)

@@ -20,8 +20,12 @@ def _ensure_init():
 def reset_collection() -> None:
     """Delete all data from the collection and re-create it."""
     _ensure_init()
-    _collection.delete(ids=_collection.get()["ids"])
-    log.info("ChromaDB collection reset")
+    ids = _collection.get()["ids"]
+    if ids:
+        _collection.delete(ids=ids)
+        log.info("ChromaDB collection reset")
+    else:
+        log.info("ChromaDB collection already empty")
 
 
 _HNSW_METADATA = {
@@ -191,6 +195,31 @@ def get_index_stats() -> dict:
         "total_chunks": total_chunks,
         "unique_notes": unique_notes,
     }
+
+
+def update_metadata(path: str, updates: dict) -> None:
+    """Update metadata for all chunks of a note without re-embedding.
+
+    Args:
+        path: vault-relative path of the note.
+        updates: dict of metadata fields to merge into existing metadata
+                 (e.g. ``{"entities_str": ",Person:Alice,", "summary": "..."}``).
+    """
+    _ensure_init()
+    results = _collection.get(where={"path": path})
+    ids = results["ids"]
+    if not ids:
+        return
+    existing = results["metadatas"] or []
+    new_metadatas = []
+    for m in existing:
+        if m is not None:
+            merged = dict(m)
+            merged.update(updates)
+            new_metadatas.append(merged)
+        else:
+            new_metadatas.append(updates)
+    _collection.update(ids=ids, metadatas=new_metadatas)
 
 
 def search_by_tags(tags: list[str], n: int = 20) -> list[dict]:

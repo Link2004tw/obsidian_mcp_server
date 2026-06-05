@@ -6,6 +6,7 @@ Used by ``search_notes`` to blend keyword and semantic scores for hybrid search.
 
 import re
 import threading
+import time
 
 from rank_bm25 import BM25Okapi
 
@@ -19,6 +20,10 @@ _bm25: BM25Okapi | None = None
 _bm25_corpus_ids: list[str] | None = None
 _bm25_doc_count: int = 0
 _bm25_lock = threading.Lock()
+
+# Cooldown to avoid repeated full-index rebuilds (which call get_all_documents)
+_bm25_last_rebuild: float = 0.0
+_BM25_REBUILD_INTERVAL = 60.0  # seconds
 
 
 def _tokenize(text: str) -> list[str]:
@@ -57,11 +62,13 @@ def _rebuild_index() -> None:
 
 
 def ensure_index() -> None:
-    """Rebuild the BM25 index if it is stale or missing."""
+    """Rebuild the BM25 index if it is stale or missing (with cooldown)."""
+    global _bm25_last_rebuild
     with _bm25_lock:
         current_count = chroma_store.count()
         if _bm25 is None or current_count != _bm25_doc_count:
             _rebuild_index()
+            _bm25_last_rebuild = time.time()
 
 
 def get_document_id(path: str, chunk_idx: int) -> str:
@@ -87,9 +94,15 @@ def search(query: str, n: int = 20) -> list[dict]:
     callers should normalise them before blending with semantic scores.
     """
     with _bm25_lock:
+        global _bm25_last_rebuild
         current_count = chroma_store.count()
-        if _bm25 is None or current_count != _bm25_doc_count:
+        needs_rebuild = _bm25 is None or current_count != _bm25_doc_count
+        is_on_cooldown = (time.time() - _bm25_last_rebuild) < _BM25_REBUILD_INTERVAL
+        if needs_rebuild and not is_on_cooldown:
             _rebuild_index()
+            _bm25_last_rebuild = time.time()
+        elif needs_rebuild and is_on_cooldown:
+            log.debug("BM25 rebuild deferred — on cooldown")
         if _bm25 is None or not _bm25_corpus_ids:
             return []
         corpus_ids = list(_bm25_corpus_ids)

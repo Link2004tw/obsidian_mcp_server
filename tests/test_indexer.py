@@ -1,7 +1,7 @@
-"""Tests for indexer.py — pure functions (no external dependencies)."""
+"""Tests for indexer — pure functions (no external dependencies)."""
 from unittest.mock import patch
 
-from obsidian_ai.indexer import (
+from obsidian_ai._index_utils import (
     _extract_frontmatter_fields,
     _extract_tags,
     _sanitize,
@@ -325,16 +325,14 @@ def test_extract_frontmatter_fields_string_alias():
 
 def test_delta_skips_unchanged_chunks():
     """Delta indexing: unchanged chunks are not re-embedded."""
-    import obsidian_ai.indexer as idx
-
-    idx.SKIP_ENTITIES = True
-    idx.SKIP_SUMMARIES = True
+    import obsidian_ai._index_utils as utils
+    import obsidian_ai.chunker as chnk
 
     content = "word " * 2000  # ~5 chunks
 
     def _simulate_chunks(text):
-        raw = idx._sanitize(text)
-        hc = idx.chunk_text_heading_aware(raw)
+        raw = utils._sanitize(text)
+        hc = utils.chunk_text_heading_aware(raw)
         ids, docs, metas = [], [], []
         for i, (_h, c) in enumerate(hc):
             ids.append(f"t.md::chunk_{i}")
@@ -342,12 +340,10 @@ def test_delta_skips_unchanged_chunks():
             metas.append({"path": "t.md", "chunk": i})
         return ids, metas, docs
 
-    with patch.object(idx, "obsidian_client") as moc, \
-         patch.object(idx, "llm_client") as mllm, \
-         patch.object(idx, "chroma_store") as mcs, \
-         patch.object(idx, "_extract_and_summarize_cached") as mext:
+    with patch.object(chnk, "obsidian_client") as moc, \
+         patch.object(chnk, "llm_client") as mllm, \
+         patch.object(chnk, "chroma_store") as mcs:
 
-        mext.return_value = ([], [], [], "")
         original_chunks = _simulate_chunks(content)
         num_orig = len(original_chunks[0])
 
@@ -357,7 +353,7 @@ def test_delta_skips_unchanged_chunks():
         mllm.batch_embed.return_value = [[0.1] * 768 for _ in range(num_orig + 5)]
         mllm.batch_embed.reset_mock()
 
-        ok = idx._index_note("t.md", content=content, _is_new=True)
+        ok = chnk.index_note("t.md", content=content, _is_new=True)
         assert ok
         assert mllm.batch_embed.call_count == 1
         assert len(mllm.batch_embed.call_args[0][0]) == num_orig
@@ -367,7 +363,7 @@ def test_delta_skips_unchanged_chunks():
         mllm.batch_embed.reset_mock()
         mllm.batch_embed.return_value = [[0.1] * 768 for _ in range(num_orig + 5)]
 
-        ok = idx._index_note("t.md", content=content, _is_new=False)
+        ok = chnk.index_note("t.md", content=content, _is_new=False)
         assert ok
         assert mllm.batch_embed.call_count == 0, "batch_embed should NOT be called for unchanged content"
 
@@ -377,7 +373,7 @@ def test_delta_skips_unchanged_chunks():
         mllm.batch_embed.reset_mock()
         mllm.batch_embed.return_value = [[0.1] * 768 for _ in range(5)]
 
-        ok = idx._index_note("t.md", content=modified, _is_new=False)
+        ok = chnk.index_note("t.md", content=modified, _is_new=False)
         assert ok
         assert mllm.batch_embed.call_count == 1
         # Only the last chunk (which contains "CHANGED") should be embedded
