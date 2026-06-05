@@ -54,26 +54,24 @@ Obsidian vault
     │
     ├─ get_note(path) ────────── fetch note content
     │
-    ├─ _sanitize(content) ────── replace broken Unicode characters
+    ├─ Phase 1: chunker.py ───── chunk + embed + store (no LLM)
+    │   ├─ _sanitize() ────────── replace broken Unicode characters
+    │   ├─ word_count < 20? ──── skip short notes
+    │   ├─ delete_by_path() ──── clear old chunks from ChromaDB
+    │   ├─ chunk_heading_aware() ── heading-aware chunking
+    │   ├─ batch_embed() ──────── Ollama batch embedding (/api/embed)
+    │   └─ upsert() ──────────── store in ChromaDB with partial metadata
     │
-    ├─ word_count < 20? ──────── skip short notes
+    ├─ Phase 2a: entity_extractor.py ── LLM entity extraction (cached)
     │
-    ├─ delete_by_path(path) ──── clear old chunks from ChromaDB
+    ├─ Phase 2b: summarizer.py ──────── LLM summary generation (cached)
     │
-    ├─ _extract_entities() ───── extract entities via LLM (cached, unless --skip-entities)
-    │
-    ├─ _generate_summary() ───── generate summary via LLM (cached, unless --skip-summaries)
-    │
-    ├─ chunk_text_heading_aware() ── heading-aware chunking
-    │
-    ├─ embed(chunk) ──────────── Ollama embedding per chunk
-    │
-    └─ upsert(path, i, vec, metadata) ── store in ChromaDB with full metadata
+    └─ Phase 3: indexer.py ───── finalize metadata in ChromaDB
 ```
 
 ## Entity Extraction
 
-During indexing, each note's sanitized content is sent to the LLM (Qwen3:8b) for entity extraction:
+During indexing (Phase 2a), each note's sanitized content is sent to the LLM (Qwen3:4b) for entity extraction:
 
 1. LLM receives a prompt requesting JSON entity output
 2. Returns entities like `[{"name": "Python", "type": "Technology", "confidence": 0.95}]`
@@ -111,7 +109,7 @@ Large notes are split into overlapping chunks to stay within Ollama's embedding 
 
 The indexer uses heading-aware chunking by default:
 
-1. Notes are split by markdown headings (`#`, `##`, etc.) via `_split_by_headings()`
+1. Notes are split by markdown headings (`#`, `##`, etc.) via `split_by_headings()` in `_index_utils.py`
 2. Small sections are kept whole (under chunk size)
 3. Large sections are split into word-based chunks with overlap
 4. Each chunk retains its heading context as metadata
@@ -127,7 +125,7 @@ Section 3: "## Conclusion" (400 words)  → kept whole
 
 ### Flat Chunking
 
-The original word-based chunking is also available as `chunk_text()`:
+The original word-based chunking is also available as `chunk_text()` from `_index_utils.py`:
 
 ```
 Chunk 0: words 0–499
@@ -167,17 +165,17 @@ Notes under 20 words (`SKIP_MIN_TOKENS`) are skipped — they don't contain enou
 
 ## Re-Indexing
 
-Running the indexer again is safe. For each note, it:
-1. Computes a content hash and compares to the stored hash
-2. If unchanged (and not forced), skips the note (incremental)
-3. If changed or new, deletes old chunks from ChromaDB
-4. Re-chunks, re-extracts entities, re-generates summary, re-embeds
+Running the indexer again is safe. The 3-phase architecture handles each note incrementally:
+1. **Phase 1 (chunker):** computes a content hash and compares to the stored hash. If unchanged, skips the note — no embeddings, no LLM calls. If changed or new, deletes old chunks from ChromaDB, re-chunks, re-embeds, and upserts.
+2. **Phase 2a/2b (extractor/summarizer):** checks entity/summary caches per content hash. Re-extracts only for changed content. Caches persist across runs.
+3. **Phase 3:** finalizes metadata and graph updates.
 
 ## Concurrency
 
-- Indexing uses 2-6 parallel workers (auto-detected via `_embed_workers_for_current_machine()`)
-- Entity extraction and summary generation are serialized to 1 concurrent call (via `_llm_chat_lock` semaphore) to prevent Ollama timeout pileup
-- Embedding calls are not rate-limited (they're fast and cheap)
+- Phase 1 (`chunker.py`) uses `EMBED_WORKER_FLOOR` to `EMBED_WORKER_CEIL` parallel workers (default 1–2, configurable via `EMBED_WORKER_FLOOR`/`EMBED_WORKER_CEIL`)
+- Phase 2a/2b (entity extraction + summary generation) are serialized to 1 concurrent call (via `_llm_chat_lock` semaphore, configurable via `LLM_CHAT_CONCURRENCY`) to prevent Ollama timeout pileup
+- Embedding calls use batch `/api/embed` (all chunks embedded in one call per note)
+- Notes are fetched in parallel: `READ_WORKERS` default 2 (configurable)
 
 ## YAML Frontmatter Utilities
 
@@ -212,24 +210,31 @@ Example `logs/indexer.log` entry:
 
 ## CLI Wrapper
 
-A command-line interface is available via `cli.py` in the project root:
+A command-line interface is available via `cli.py` or the installed `obsidian-ai` entry point:
 
 ```bash
 # Run full index
-python cli.py index
+obsidian-ai index
 
 # Start file watcher
-python cli.py watch
+obsidian-ai watch
 
 # Semantic search
-python cli.py search "machine learning" -n 5
+obsidian-ai search "machine learning" -n 5
 
 # Auto-tag notes
-python cli.py tag-notes "python" -k 3
+obsidian-ai tag-notes "python" -k 3
 
 # Show index stats
-python cli.py stats
+obsidian-ai stats
 
 # Re-run indexer
-python cli.py sync
+obsidian-ai sync
+
+# Dashboard (static or live)
+obsidian-ai dashboard -o my_dashboard.html
+obsidian-ai dashboard --serve
+
+# Evaluation benchmark
+obsidian-ai eval --use-graph
 ```

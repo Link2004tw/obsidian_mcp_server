@@ -2,13 +2,14 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import threading
-from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
+import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 from . import chroma_store, config, obsidian_client
 from .frontmatter import parse as fm_parse
 from .logger import get_logger
-from .wiki_links import extract_wiki_links
 
 log = get_logger(__name__)
 
@@ -262,3 +263,139 @@ def _read_one_note(path: str) -> tuple[str, str, str] | None:
         return path, raw, compute_hash(raw)
     except Exception:
         return None
+
+
+# ── Disk temperature monitoring ──────────────────────────────────────
+
+DISK_TEMP_MONITOR_FILE = os.path.join(
+    os.environ.get("TEMP", ""), "disk_temp_monitor.json"
+)
+
+
+class DiskTempExceededError(Exception):
+    """Raised when disk temperature exceeds the configured limit."""
+
+
+_last_disk_temp_check = 0.0
+
+
+def check_disk_temp(threshold: int = 80) -> None:
+    """Read disk temp from monitor file and raise if over *threshold*.
+
+    The pipeline must call this periodically (e.g. every N notes).  The
+    PowerShell monitor script *scripts/monitor_disk_temp.ps1* must be
+    running in an admin console for this to work.
+
+    Falls back to a direct ``Get-StorageReliabilityCounter`` query if the
+    monitor file is stale (>60 s) — only succeeds when the Python process
+    itself is elevated.
+    """
+    now = time.time()
+    temp = None
+
+    if os.path.isfile(DISK_TEMP_MONITOR_FILE):
+        try:
+            with open(DISK_TEMP_MONITOR_FILE) as f:
+                data = json.load(f)
+            mtime = os.path.getmtime(DISK_TEMP_MONITOR_FILE)
+            if now - mtime < 120:
+                temp = data.get("temperature")
+                if temp is not None:
+                    log.debug(f"Disk temp (monitor): {temp}°C")
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    global _last_disk_temp_check
+    if temp is None and (now - _last_disk_temp_check) >= 60:
+        _last_disk_temp_check = now
+        try:
+            cmd = [
+                "powershell", "-NoProfile", "-Command",
+                "Get-PhysicalDisk -FriendlyName '*KLEVV*' | Get-StorageReliabilityCounter | Select-Object -ExpandProperty Temperature"
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode == 0 and result.stdout.strip():
+                parsed = result.stdout.strip()
+                temp = float(parsed)
+                log.debug(f"Disk temp (direct): {temp}°C")
+        except Exception:
+            pass
+
+    if temp is not None and temp > threshold:
+        raise DiskTempExceededError(
+            f"Disk temperature {temp}°C exceeds limit of {threshold}°C — "
+            "aborting to prevent hardware damage"
+        )
+
+    if temp is None:
+        log.debug("Disk temperature not available (run monitor_disk_temp.ps1 as admin)")
+
+
+def launch_disk_temp_monitor() -> None:
+    """Attempt to launch the PowerShell monitor script via UAC.
+
+    Pops a UAC prompt.  Silent if the script path doesn't exist.
+    """
+    script = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        "scripts",
+        "monitor_disk_temp.ps1",
+    )
+    if not os.path.isfile(script):
+        log.warning(f"Monitor script not found at {script}")
+        return
+    try:
+        subprocess.Popen(
+            [
+                "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                "-Command",
+                f"Start-Process -Verb RunAs -WindowStyle Hidden -FilePath powershell "
+                f"'-NoProfile -ExecutionPolicy Bypass -File \"{script}\"'",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        log.info("Launched disk temperature monitor (UAC prompt may appear)")
+    except Exception as e:
+        log.warning(f"Failed to launch disk temp monitor: {e}")
+
+
+# ── Adaptive thermal throttling for LLM calls ──────────────────────
+
+_llm_call_times: list[float] = []
+_llm_call_times_lock = threading.Lock()
+_LLM_TIME_WINDOW = 10
+_LLM_TIME_THRESHOLD_MULTIPLIER = 3.0
+_llm_baseline_time: float | None = None
+_llm_current_delay_multiplier: float = 1.0
+_llm_delay_multiplier_lock = threading.Lock()
+
+
+def thermal_throttle(elapsed: float) -> None:
+    global _llm_current_delay_multiplier, _llm_baseline_time
+    with _llm_call_times_lock:
+        _llm_call_times.append(elapsed)
+        if len(_llm_call_times) > _LLM_TIME_WINDOW:
+            _llm_call_times.pop(0)
+        if _llm_baseline_time is None and len(_llm_call_times) >= 3:
+            _llm_baseline_time = sum(_llm_call_times) / len(_llm_call_times)
+
+    if _llm_baseline_time is not None and len(_llm_call_times) >= 3:
+        recent = _llm_call_times[-3:]
+        recent_avg = sum(recent) / len(recent)
+        if recent_avg > _llm_baseline_time * _LLM_TIME_THRESHOLD_MULTIPLIER:
+            with _llm_delay_multiplier_lock:
+                _llm_current_delay_multiplier = min(5.0, _llm_current_delay_multiplier * 1.5)
+            log.warning(
+                f"Thermal throttle: LLM calls slowing (recent avg {recent_avg:.1f}s "
+                f"vs baseline {_llm_baseline_time:.1f}s) — "
+                f"delay {_llm_current_delay_multiplier:.1f}x"
+            )
+        else:
+            with _llm_delay_multiplier_lock:
+                _llm_current_delay_multiplier = max(1.0, _llm_current_delay_multiplier * 0.95)
+
+
+def get_llm_delay() -> float:
+    with _llm_delay_multiplier_lock:
+        return config.llm_call_delay * _llm_current_delay_multiplier

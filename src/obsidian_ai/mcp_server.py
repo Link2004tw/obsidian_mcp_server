@@ -18,6 +18,7 @@ from .tools._shared import (  # noqa: F401
     _truncate_snippet,
 )
 from .tools.graph import (  # noqa: F401
+    add_entity,
     entity_timeline,
     export_graph,
     get_backlinks,
@@ -32,6 +33,7 @@ from .tools.graph import (  # noqa: F401
     get_orphan_notes,
     get_ranking_weights,
     get_shortest_path,
+    list_entities,
     merge_entities,
     multi_hop_traversal,
     related_entities,
@@ -44,6 +46,7 @@ from .tools.misc import (  # noqa: F401
     health_check,
 )
 from .tools.notes import (  # noqa: F401
+    add_note_to_subject,
     add_tags,
     batch_tag_notes,
     create_backlink,

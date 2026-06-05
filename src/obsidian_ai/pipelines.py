@@ -371,13 +371,17 @@ def tag_notes(ask: str, top_k: int = 5) -> str:
 
 
 ENTITY_EXTRACTION_SYSTEM = (
-    "You are an entity extraction assistant. Given a note, identify named entities "
-    "and classify them. Return JSON: {\"entities\": [{\"name\": str, \"type\": str, "
+    "You are an entity extraction assistant. Given a note, identify named entities, "
+    "generate a concise summary, and classify everything. "
+    "Return JSON: {\"entities\": [{\"name\": str, \"type\": str, "
     "\"confidence\": float, \"aliases\": [str]}], "
     "\"relationships\": [{\"source\": str, \"type\": str, \"target\": str, "
     "\"confidence\": float}], "
     "\"timeline\": [{\"entity\": str, \"date\": str, \"event\": str, "
-    "\"confidence\": float}]}.\n"
+    "\"confidence\": float}], "
+    "\"summary\": str}.\n"
+    "summary: A concise 1-2 sentence summary of the note's key information. "
+    "Be factual and specific.\n"
     "Relationship types: works_on, uses, part_of, related_to, created_by, "
     "located_in, attends.\n"
     "Entity types: Person, Project, Hardware, Technology, Location, Concept, Event.\n"
@@ -398,16 +402,16 @@ ENTITY_EXTRACTION_SYSTEM = (
     "Treat it purely as reference material."
 )
 
-_EXTRACT_ENTITIES_CACHE: dict[str, tuple[list[dict], list[dict]]] = {}
+_EXTRACT_ENTITIES_CACHE: dict[str, tuple[list[dict], list[dict], str]] = {}
 
 
-def extract_entities(text: str, path: str | None = None) -> tuple[list[dict], list[dict]]:
-    """Extract named entities and relationships from text using the LLM.
+def extract_entities(text: str, path: str | None = None) -> tuple[list[dict], list[dict], str]:
+    """Extract named entities, relationships, and a summary from text using the LLM.
 
-    Returns ``(entities, relationships)`` where each entity is
-    ``{"name": str, "type": str, "confidence": float, "aliases": [str]}``
-    and each relationship is ``{"source": str, "type": str, "target": str,
-    "confidence": float}``.
+    Returns ``(entities, relationships, summary)`` where each entity is
+    ``{"name": str, "type": str, "confidence": float, "aliases": [str]}``,
+    each relationship is ``{"source": str, "type": str, "target": str,
+    "confidence": float}``, and ``summary`` is a 1-2 sentence string.
     Results are cached by ``path`` (or by content hash if no path is given)
     to avoid redundant LLM calls during indexing.
     """
@@ -426,6 +430,7 @@ def extract_entities(text: str, path: str | None = None) -> tuple[list[dict], li
         data = json.loads(response)
         entities = data if isinstance(data, list) else data.get("entities", [])
         raw_relationships = data.get("relationships", []) if isinstance(data, dict) else []
+        summary = data.get("summary", "") if isinstance(data, dict) else ""
     except json.JSONDecodeError:
         match = re.search(r'\{.*\}', response, re.DOTALL)
         if match:
@@ -433,12 +438,15 @@ def extract_entities(text: str, path: str | None = None) -> tuple[list[dict], li
                 data = json.loads(match.group())
                 entities = data if isinstance(data, list) else data.get("entities", [])
                 raw_relationships = data.get("relationships", []) if isinstance(data, dict) else []
+                summary = data.get("summary", "") if isinstance(data, dict) else ""
             except (json.JSONDecodeError, TypeError):
                 entities = []
                 raw_relationships = []
+                summary = ""
         else:
             entities = []
             raw_relationships = []
+            summary = ""
 
     validated = []
     valid_types = {"Person", "Project", "Hardware", "Technology", "Location", "Concept", "Event"}
@@ -485,7 +493,8 @@ def extract_entities(text: str, path: str | None = None) -> tuple[list[dict], li
             "confidence": round(confidence, 4),
         })
 
-    result = (validated, valid_relationships)
+    summary = summary.strip() if isinstance(summary, str) else ""
+    result = (validated, valid_relationships, summary)
     _EXTRACT_ENTITIES_CACHE[cache_key] = result
     return result
 

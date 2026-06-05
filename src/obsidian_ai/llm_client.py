@@ -7,9 +7,9 @@ import requests
 
 from . import config
 
-REQUEST_TIMEOUT = 300
-EMBED_TIMEOUT = 180
-MAX_RETRIES = 3
+REQUEST_TIMEOUT = int(os.getenv("OLLAMA_CHAT_TIMEOUT", "45"))
+EMBED_TIMEOUT = 60
+MAX_RETRIES = 2
 INITIAL_BACKOFF = 2
 MAX_CONTEXT_WORDS = 3000
 
@@ -108,7 +108,7 @@ _EMBED_PERSISTENT_CACHE.update(_load_embed_cache())
 def _request_with_retry(method, url, *, timeout, **kwargs):
     for attempt in range(MAX_RETRIES):
         try:
-            resp = requests.request(method, url, timeout=timeout * (2 ** attempt), **kwargs)
+            resp = requests.request(method, url, timeout=timeout, **kwargs)
             resp.raise_for_status()
             return resp
         except requests.exceptions.ReadTimeout:
@@ -236,6 +236,7 @@ def chat(messages: list[dict], model: str | None = None, think: bool = True) -> 
         "model": model,
         "messages": msgs,
         "stream": False,
+        "keep_alive": "5m",
     }
     resp = _request_with_retry(
         "POST",

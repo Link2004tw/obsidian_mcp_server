@@ -9,14 +9,16 @@ A local, privacy-first knowledge management layer for Obsidian vaults. Provides 
 ### 1. Install dependencies
 
 ```bash
-uv pip install -e .
+python -m venv .venv
+.venv\Scripts\activate
+uv sync
 ```
 
 ### 2. Pull models
 
 ```bash
 ollama pull nomic-embed-text
-ollama pull qwen3:8b
+ollama pull qwen3:4b
 ```
 
 ### 3. Configure environment
@@ -30,7 +32,7 @@ OBSIDIAN_API_KEY=your_api_key_here
 
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_EMBED_MODEL=nomic-embed-text
-OLLAMA_CHAT_MODEL=qwen3:8b
+OLLAMA_CHAT_MODEL=qwen3:4b
 
 VAULT_PATH=C:/Users/you/your-vault
 CHROMA_PATH=data/chroma_db
@@ -64,35 +66,39 @@ python -m obsidian_ai.mcp_server
 ### CLI
 
 All commands communicate with the MCP server via stdio — same code path as any MCP agent.
+Use `obsidian-ai <command>` (if installed) or `python cli.py <command>`.
 
 | Command | Description |
 |---------|-------------|
-| `python cli.py index` | Run full index |
-| `python cli.py watch` | Start file watcher daemon |
-| `python cli.py sync` | Re-run the full indexer pipeline |
-| `python cli.py stats` | Show index statistics (chunks, notes, model) |
-| `python cli.py search <query>` | Semantic search (`-n` for count, `--tags`, `--folder`, `--date-after`, etc.) |
-| `python cli.py read <path>` | Read full note content by path |
-| `python cli.py write <path> <content>` | Create or overwrite a note (use quotes for content) |
-| `python cli.py list-all` | List all note paths in the vault |
-| `python cli.py list-folder <path>` | List notes directly in a folder (non-recursive) |
-| `python cli.py list-folder-deep <path>` | List all notes in a folder (recursive) |
-| `python cli.py read-by-title <title>` | Look up a note by its title (`-f <folder>` to scope) |
-| `python cli.py search-by-tags <tag> [tag...]` | Find notes by YAML frontmatter tags (`-n` for max results) |
-| `python cli.py add-tags <path> <tag> [tag...]` | Add tags to a note's YAML frontmatter |
-| `python cli.py create-backlink <a> <b>` | Create mutual `[[backlinks]]` between two notes |
-| `python cli.py ask <question>` | Ask a natural-language question about the vault (`-k` for context) |
-| `python cli.py tag-notes <query>` | Auto-suggest & apply tags (`-k` for note count) |
+| `index` | Run full index |
+| `watch` | Start file watcher daemon |
+| `sync` | Re-run the full indexer pipeline |
+| `stats` | Show index statistics (chunks, notes, model) |
+| `search <query>` | Semantic search (`-n` for count, `--tags`, `--folder`, `--date-after`, etc.) |
+| `read <path>` | Read full note content by path |
+| `write <path> <content>` | Create or overwrite a note (use quotes for content) |
+| `list-all` | List all note paths in the vault |
+| `list-folder <path>` | List notes directly in a folder (non-recursive) |
+| `list-folder-deep <path>` | List all notes in a folder (recursive) |
+| `read-by-title <title>` | Look up a note by its title (`-f <folder>` to scope) |
+| `search-by-tags <tag> [tag...]` | Find notes by YAML frontmatter tags (`-n` for max results) |
+| `add-tags <path> <tag> [tag...]` | Add tags to a note's YAML frontmatter |
+| `create-backlink <a> <b>` | Create mutual `[[backlinks]]` between two notes |
+| `ask <question>` | Ask a natural-language question about the vault (`-k` for context) |
+| `tag-notes <query>` | Auto-suggest & apply tags (`-k` for note count) |
+| `dashboard [--serve] [-o FILE]` | Generate or serve the HTML knowledge graph dashboard |
+| `eval [--use-graph] [--use-summaries]` | Run retrieval evaluation benchmark |
 
 ### MCP Server
 
 | Command | Description |
 |---------|-------------|
 | `python -m obsidian_ai.mcp_server` | Start the MCP server (stdio transport) |
+| `obsidian-ai <command>` | CLI wrapper that talks to the MCP server |
 
 ---
 
-## MCP Tools (67 total)
+## MCP Tools (70 total)
 
 All tools that accept a `path` parameter auto-normalize it — you can pass absolute paths or vault-relative paths interchangeably. The vault prefix is stripped automatically.
 
@@ -117,6 +123,7 @@ All tools that accept a `path` parameter auto-normalize it — you can pass abso
 | `list_folder` | List entries directly in a folder (non-recursive) |
 | `list_folder_deep` | List all notes in a folder (recursive) |
 | `read_note_by_title` | Look up a note by its filename |
+| `add_note_to_subject` | Create a note and auto-link it into a subject |
 
 ### Tag Management
 | Tool | Description |
@@ -157,6 +164,8 @@ All tools that accept a `path` parameter auto-normalize it — you can pass abso
 | `get_note_entities` | Return all entities found in a note |
 | `get_entity_types` | List all entity types in the index |
 | `get_entity_aliases` | List aliases for an entity |
+| `list_entities` | List entities with optional type filter |
+| `add_entity` | Register a new entity with metadata |
 | `merge_entities` | Merge duplicate entities in the index |
 | `entity_timeline` | Show timeline of entity mentions across notes |
 | `related_entities` | Find related entities via relationship graph |
@@ -213,20 +222,31 @@ obsidian_mcp_server_test/
 ├── src/
 │   └── obsidian_ai/
 │       ├── __init__.py              # Package init
+│       ├── _index_utils.py          # Indexer utilities (sanitization, hash, tags)
 │       ├── config.py                # Environment variables and settings
 │       ├── logger.py                # Shared logging module
 │       ├── frontmatter.py           # YAML frontmatter parsing/manipulation
 │       ├── obsidian_client.py       # Obsidian REST API wrapper
 │       ├── llm_client.py            # Ollama embedding + chat wrapper
 │       ├── chroma_store.py          # ChromaDB vector storage
-│       ├── indexer.py               # Vault indexing pipeline + file watcher
+│       ├── indexer.py               # Indexing orchestration + file watcher
+│       ├── chunker.py               # Phase 1: chunk, embed, store (no LLM)
+│       ├── entity_extractor.py      # Phase 2a: LLM entity extraction
+│       ├── summarizer.py            # Phase 2b: LLM summary generation
+│       ├── extract_entities_pipeline.py  # Entity extraction pipeline
+│       ├── summarize_pipeline.py    # Summary generation pipeline
+│       ├── ranker.py                # Unified ranking (semantic + entity + graph + keyword)
+│       ├── entity_relations.py      # Entity relationship graph store
+│       ├── summary_store.py         # Summary embedding storage
 │       ├── pipelines.py             # Query & action pipelines (LLM-powered)
 │       ├── entity_store.py          # Entity extraction and inverted index
 │       ├── graph_store.py           # Wiki-link graph storage and traversal
-│       ├── wiki_links.py            # Wiki-link parsing utilities
 │       ├── keyword_search.py        # Keyword-based search over notes
 │       ├── clustering.py            # Semantic clustering of notes
-│       ├── todos.py                 # Todo management (20 tools)
+│       ├── wiki_links.py            # Wiki-link parsing utilities
+│       ├── dashboard.py             # HTML knowledge graph dashboard
+│       ├── todos.py                 # Todo implementation layer
+│       ├── eval.py                  # Retrieval evaluation benchmark
 │       ├── tools/                   # MCP tool submodules
 │       │   ├── __init__.py          # Tool registration
 │       │   ├── _shared.py           # Shared helpers (expand, rewrite, filter)
@@ -236,7 +256,9 @@ obsidian_mcp_server_test/
 │       │   ├── todos.py             # 20 todo management tools
 │       │   └── misc.py              # get_clusters, health_check
 │       └── mcp_server.py            # FastMCP server (67 tools)
-├── src/data/                        # Empty data directory (reserved)
+├── scripts/                         # Health monitoring scripts
+│   ├── monitor_disk_temp.ps1        # Disk temperature monitor
+│   └── temp_dashboard.py            # Temperature dashboard
 ├── docs/                            # User documentation
 │   ├── setup.md
 │   ├── architecture.md
@@ -258,9 +280,9 @@ obsidian_mcp_server_test/
 │   ├── combined_cache.json
 │   ├── content_hashes.json
 │   ├── embed_cache.json
-│   ├── entities.json
 │   ├── entity_cache.json
 │   ├── expand_cache.json
+│   ├── entity_relations.json
 │   ├── graph.json
 │   ├── mtime_map.json
 │   ├── note_paths.json
@@ -268,8 +290,8 @@ obsidian_mcp_server_test/
 ├── logs/                            # Log files (gitignored)
 │   ├── indexer.log
 │   ├── mcp_calls.log
-│   ├── test_file.log
-│   └── todos.log
+│   ├── todos.log
+│   └── test_file.log
 ├── graphify-out/                    # Knowledge graph exports
 │   ├── cache/
 │   ├── cost.json
@@ -277,7 +299,7 @@ obsidian_mcp_server_test/
 │   ├── graph.html
 │   ├── graph.json
 │   └── manifest.json
-├── tests/                           # Unit tests (381+)
+├── tests/                           # Unit tests (400+)
 │   ├── test_chroma_store.py
 │   ├── test_clustering.py
 │   ├── test_config.py
@@ -482,12 +504,28 @@ mcpServers:
 | `OBSIDIAN_API_KEY` | — | API key from Obsidian Local REST API plugin |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Embedding model name |
-| `OLLAMA_CHAT_MODEL` | `qwen3:8b` | Chat/LLM model name |
+| `OLLAMA_CHAT_MODEL` | `qwen3:4b` | Chat/LLM model name |
 | `VAULT_PATH` | — | Absolute path to the Obsidian vault (required for file watcher) |
 | `CHROMA_PATH` | `data/chroma_db` | ChromaDB persistent storage path |
-| `READ_WORKERS` | `6` | Parallel note readers for initial fetch |
-| `LLM_CHAT_CONCURRENCY` | `2` | Max concurrent Ollama chat calls during indexing |
+| `DATA_DIR` | `data` | Override data storage root |
+| `READ_WORKERS` | `2` | Parallel note readers for initial fetch |
+| `LLM_CHAT_CONCURRENCY` | `1` | Max concurrent Ollama chat calls during indexing |
+| `INDEX_BATCH_SIZE` | `50` | Notes per index batch |
+| `EMBED_WORKER_FLOOR` | `1` | Min embedding worker threads |
+| `EMBED_WORKER_CEIL` | `2` | Max embedding worker threads |
+| `LLM_CALL_DELAY` | `0.5` | Delay between LLM calls (seconds) |
+| `LLM_CALL_HARD_TIMEOUT` | `30` | Max seconds per LLM call (prevents GPU TDR crash) |
+| `GPU_TEMP_LIMIT` | `85` | GPU temperature limit (°C); extraction aborts if exceeded |
+| `GPU_VRAM_LIMIT` | `80` | GPU VRAM usage limit (%) |
+| `DISK_TEMP_LIMIT` | `80` | Disk temperature limit (°C) |
+| `DISK_TEMP_CHECK_INTERVAL` | `30` | Disk temp check interval (seconds) |
 | `EXPAND_CACHE_TTL` | `3600` | TTL in seconds for query expansion cache |
+| `ENTITY_ALIASES_FILE` | — | Custom entity aliases JSON file |
+| `TODO_FILE` | `todos.md` | Todo file name in vault |
+| `RANKING_SEMANTIC` | `0.40` | Semantic search ranking weight |
+| `RANKING_ENTITY` | `0.30` | Entity signal ranking weight |
+| `RANKING_GRAPH` | `0.20` | Graph proximity ranking weight |
+| `RANKING_KEYWORD` | `0.10` | Keyword BM25 ranking weight |
 
 ---
 

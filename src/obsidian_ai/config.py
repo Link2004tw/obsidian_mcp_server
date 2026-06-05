@@ -24,7 +24,7 @@ obsidian_api_key: str = _RedactedString(os.getenv("OBSIDIAN_API_KEY", ""))
 
 ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 ollama_embed_model = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
-ollama_chat_model = os.getenv("OLLAMA_CHAT_MODEL", "qwen3:8b")
+ollama_chat_model = os.getenv("OLLAMA_CHAT_MODEL", "qwen3:4b")
 
 _project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 data_dir = os.getenv("DATA_DIR", os.path.join(_project_root, "data"))
@@ -45,6 +45,11 @@ read_workers = int(os.getenv("READ_WORKERS", "2"))
 llm_chat_concurrency = int(os.getenv("LLM_CHAT_CONCURRENCY", "1"))
 index_batch_size = int(os.getenv("INDEX_BATCH_SIZE", "50"))
 llm_call_delay = float(os.getenv("LLM_CALL_DELAY", "0.5"))
+llm_call_hard_timeout = int(os.getenv("LLM_CALL_HARD_TIMEOUT", "30"))
+gpu_temp_limit = int(os.getenv("GPU_TEMP_LIMIT", "85"))
+gpu_vram_limit = int(os.getenv("GPU_VRAM_LIMIT", "80"))
+disk_temp_limit = int(os.getenv("DISK_TEMP_LIMIT", "80"))
+disk_temp_check_interval = int(os.getenv("DISK_TEMP_CHECK_INTERVAL", "30"))
 expand_cache_ttl = int(os.getenv("EXPAND_CACHE_TTL", "3600"))
 
 # Ranking weights for the unified Ranker (semantic, entity, graph, keyword)
@@ -112,8 +117,8 @@ def validate(verbose: bool = True) -> list[str]:
 
     if warnings:
         for w in warnings:
-            print(f"⚠  {w}")
+            print(f"!  {w}")
     elif verbose:
-        print("✓ All config checks passed")
+        print("OK — All config checks passed")
 
     return warnings

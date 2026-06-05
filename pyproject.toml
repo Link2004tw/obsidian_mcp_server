@@ -5,15 +5,21 @@ description = "Local, privacy-first AI knowledge layer for Obsidian vaults"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
+authors = [
+    { name = "Obsidian AI Contributors" },
+]
 keywords = ["obsidian", "ai", "knowledge-management", "mcp", "semantic-search"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
+    "Topic :: Text Processing :: Indexing",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
     "fastmcp",
@@ -23,6 +29,7 @@ dependencies = [
     "watchdog>=3.0.0",
     "pyyaml>=6.0",
     "python-dotenv>=1.0.0",
+    "rich>=13.0",
 ]
 
 [project.optional-dependencies]

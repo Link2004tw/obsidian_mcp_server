@@ -16,7 +16,7 @@ All tools that accept a `path` parameter automatically normalize it: if the LLM 
 
 ---
 
-## Tools (67 total)
+## Tools (70 total)
 
 ### Health
 
@@ -236,6 +236,21 @@ Look up a note by its title (filename without `.md` extension). Optionally scope
 
 ---
 
+#### `add_note_to_subject(subject, title, content, tags=None)`
+
+Create a note and auto-link it into a subject hub. Creates the subject hub note (`Subjects/{subject}/{subject}.md`) if missing, and adds a mutual `[[backlink]]` between the new note and the hub.
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `subject` | `str` | *(required)* | Subject name (folder and tag) |
+| `title` | `str` | *(required)* | Note title (file name without `.md`) |
+| `content` | `str` | *(required)* | Markdown body content |
+| `tags` | `list[str]` | `None` | Optional extra tags |
+
+**Returns:** `str` — confirmation with note path.
+
+---
+
 ### Tag Management
 
 #### `add_tags(path, tags)`
@@ -396,6 +411,12 @@ Find notes related to a given note using both semantic similarity and graph prox
 
 Export the wiki-link graph for external visualization.
 
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `format` | `str` | `"json"` | `"dot"` for Graphviz DOT, `"json"` for JSON |
+
+**Returns:** `str` — DOT or JSON string.
+
 ---
 
 #### `get_shortest_path(source, target)`
@@ -408,13 +429,6 @@ Find the shortest path between two notes in the wiki-link graph.
 | `target` | `str` | Vault-relative path of target note |
 
 **Returns:** `list[str]` — ordered list of note paths forming the shortest path.
-
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `format` | `str` | `"json"` | `"dot"` for Graphviz DOT, `"json"` for JSON |
-
-**Returns:** `str` — DOT or JSON string.
 
 ---
 
@@ -534,6 +548,34 @@ List all aliases for a given entity.
 | `entity_name` | `str` | Entity name |
 
 **Returns:** `list[str]` — alias names.
+
+---
+
+#### `list_entities(entity_type=None, n=50)`
+
+List entities in the index, optionally filtered by type.
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `entity_type` | `str` | `None` | Filter by type (Person, Technology, etc.) |
+| `n` | `int` | `50` | Max results |
+
+**Returns:** `list[dict]` — `[{name, type, confidence, note_count}, ...]`
+
+---
+
+#### `add_entity(name, entity_type, confidence=0.8, aliases=None)`
+
+Register a new entity in the index.
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | `str` | *(required)* | Entity name |
+| `entity_type` | `str` | *(required)* | Entity type (Person, Technology, etc.) |
+| `confidence` | `float` | `0.8` | Confidence score (0–1) |
+| `aliases` | `list[str]` | `None` | Alternative names |
+
+**Returns:** `str` — confirmation message.
 
 ---
 

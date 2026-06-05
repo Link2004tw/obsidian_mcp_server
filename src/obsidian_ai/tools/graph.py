@@ -600,6 +600,93 @@ def get_note_community(path: str, top_k: int = 5) -> str:
         return f"Error: {e}"
 
 
+def list_entities(entity_type: str | None = None, n: int = 50) -> list[dict]:
+    """List all entities in the knowledge index, optionally filtered by type.
+
+    Returns entities sorted by mention count descending, showing each
+    entity's name, type, and how many notes mention it.
+
+    Args:
+        entity_type: optional filter — one of Person, Project, Hardware,
+            Technology, Location, Concept, Event. Pass ``null`` for all types.
+        n: max results to return (default 50).
+
+    Returns:
+        List of dicts with entity_name, entity_type, and mention_count.
+    """
+    log.info(f"list_entities — type={entity_type}, n={n}")
+    try:
+        results = entity_store.list_entities(entity_type=entity_type, n=n)
+        log.info(f"list_entities — {len(results)} results")
+        return results
+    except Exception as e:
+        log_error(log, "list_entities FAILED", exc=e, entity_type=entity_type, n=n)
+        return []
+
+
+def add_entity(
+    name: str,
+    entity_type: str = "Concept",
+    aliases: list[str] | None = None,
+    relations: list[dict] | None = None,
+) -> str:
+    """Manually add an entity to the knowledge index and relationship graph.
+
+    Entities are normally auto-extracted during indexing. This tool lets
+    you create one manually (e.g. for a subject like ``"Maria"``) so it
+    appears in entity search results and can have relationships tracked.
+
+    If ``relations`` are provided, each must be a dict with ``target``
+    (entity name) and optionally ``type`` (defaults to ``"related_to"``)
+    and ``confidence`` (default 0.5).
+
+    Args:
+        name: canonical entity name (e.g. ``"ESP32"``, ``"Maria"``).
+        entity_type: entity type — one of Person, Project, Hardware,
+            Technology, Location, Concept, Event (default ``"Concept"``).
+        aliases: optional list of alternative names for this entity.
+        relations: optional list of relationship dicts, each with
+            ``target`` (required), ``type`` (default ``"related_to"``),
+            and ``confidence`` (default 0.5).
+
+    Returns:
+        A confirmation message with the created entity details.
+    """
+    log.info(f"add_entity — name={name}, type={entity_type}, aliases={aliases}, relations={relations}")
+    try:
+        result = entity_store.add_manual_entity(name, entity_type, aliases=aliases)
+        if relations:
+            count = 0
+            for rel in relations:
+                target = rel.get("target", "")
+                if not target:
+                    continue
+                rel_type = rel.get("type", "related_to")
+                confidence = rel.get("confidence", 0.5)
+                entity_relations.add(
+                    source=name,
+                    type=rel_type,
+                    target=target,
+                    confidence=confidence,
+                )
+                count += 1
+            entity_relations.save()
+
+        alias_str = ", ".join(result["aliases"]) if result["aliases"] else "(none)"
+        lines = [
+            f"Entity added: \"{result['entity_name']}\"",
+            f"  Type:       {result['entity_type']}",
+            f"  Aliases:    {alias_str}",
+            f"  Mentions:   {result['mention_count']}",
+        ]
+        if relations:
+            lines.append(f"  Relations:  {len(relations)} created")
+        return "\n".join(lines)
+    except Exception as e:
+        log_error(log, "add_entity FAILED", exc=e, name=name, entity_type=entity_type)
+        return f"Error: {e}"
+
+
 def get_ranking_weights() -> str:
     """Return the current ranking weights used by the unified Ranker.
 
@@ -650,6 +737,8 @@ __all_tools__ = [
     "get_note_entities",
     "get_entity_types",
     "get_entity_aliases",
+    "list_entities",
+    "add_entity",
     "merge_entities",
     "entity_timeline",
     "related_entities",

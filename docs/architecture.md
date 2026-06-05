@@ -5,35 +5,43 @@
 The system reads notes from Obsidian, embeds them as semantic vectors, and stores them in a local vector database for search. An MCP server exposes these capabilities to AI agents. All processing runs locally — no data leaves the machine.
 
 ```
-Agent (Goose / Claude / Cursor / opencode)
+Agent (Goose / Claude / Cursor / opencode / ChatGPT Desktop)
         │
         ▼
-    mcp_server.py ──── FastMCP (stdio) ──── 67 tools
+    mcp_server.py ──── FastMCP (stdio) ──── 70 tools
     ├── Search & Retrieval (search_notes, batch_search, retrieve_notes, ...)
-    ├── Read & Write (read_note, write_note, list_all_notes, ...)
+    ├── Read & Write (read_note, write_note, list_all_notes, add_note_to_subject, ...)
     ├── Tag Management (add_tags, remove_tags, set_tags, tag_notes, ...)
-    ├── Entity System (search_entities, get_note_entities, ...)
+    ├── Entity System (search_entities, get_note_entities, list_entities, add_entity, ...)
     ├── Graph (create_backlink, related_notes, communities, ...)
     ├── LLM-Powered (ask_vault, summarize_topic, ask_agent, ...)
     ├── Clustering (get_clusters)
-    ├── Index Management (sync_index, switch_embedding_model, ...)
+    ├── Index Management (sync_index, get_index_stats, switch_embedding_model, ...)
     └── Todo Management (add_todo, get_todos, complete_todo, ...)
         │
-        ├──────────────────────────────────┬──────────────────────┐
-        ▼                                  ▼                      ▼
-obsidian_client.py                  chroma_store.py         pipelines.py
-        │                            + entity_store           ├── query()
-        ▼                            + graph_store            ├── tag_notes()
-  Obsidian REST API                                          ├── summarize_topic()
-  (port 27123)                    ChromaDB (./chroma_db/)     ├── extract_entities()
-        │                             │                      ├── expand_query()
-        ▼                             ▼                      └── route_query()
-   llm_client.py               data/*.json (caches,
-   ├── embed(text) → Ollama →  content hashes, entities,        graph_store.py
-   │   nomic-embed-text         summaries, title maps)          ├── BFS traversal
-   └── chat(messages) → Ollama                                 ├── community detection
-       qwen3:8b                                                 ├── orphan/broken links
-                                                                └── DOT/JSON export
+        ├──────────────────────────────────┬──────────────────────┬──────────────────┐
+        ▼                                  ▼                      ▼                  ▼
+obsidian_client.py                  chroma_store.py         ranker.py         pipelines.py
+        │                            + entity_store            (unified              ├── query()
+        ▼                            + entity_relations      ranking)               ├── tag_notes()
+  Obsidian REST API                  + graph_store          semantic                ├── summarize_topic()
+  (port 27123)                            │                + entity                ├── extract_entities()
+        │                            ChromaDB +              + graph                ├── expand_query()
+        ▼                            data/*.json             + keyword              └── route_query()
+   llm_client.py                     (caches, hashes,         │
+   ├── embed(text) → Ollama →        summaries, titles)      ▼                  dashboard.py
+   │   nomic-embed-text                                 tools/search.py        (HTML output)
+   └── chat(messages) → Ollama                             ._shared              │
+       qwen3:4b                                            ._hybrid_search       graphify-out/
+                                                           ._rewrite_query        (exports)
+                                                              │
+                                                              ▼
+                                                         graph_store.py
+                                                         ├── BFS traversal
+                                                         ├── community detection
+                                                         ├── entity relations
+                                                         ├── orphan/broken links
+                                                         └── DOT/JSON export
 ```
 
 ## Components
@@ -67,7 +75,7 @@ Local ChromaDB persistence layer. Provides:
 Document IDs use the format `{path}::chunk_{N}`.
 
 ### entity_store.py
-Persistent inverted index mapping entity names to note paths. Entities are extracted per-note during indexing via LLM (Qwen3:8b) and stored as:
+Persistent inverted index mapping entity names to note paths. Entities are extracted per-note during indexing via LLM (Qwen3:4b) and stored as:
 - **`data/entities.json`** — entity index (JSON), rebuilt from ChromaDB metadata on `sync_index`
 - **`entities_str` metadata** — per-chunk string for client-side entity filtering
 - **Graph nodes** — entity nodes in `GraphStore` for cross-referencing
@@ -85,11 +93,11 @@ In-memory wiki-link graph built during indexing. Dict-based adjacency list (`_ad
 - Entity node support (`__entity:{type}:{name}`), excluded from stats/export
 
 ### indexer.py
-Indexing pipeline with incremental updates and file watcher. Three-phase batch embedding for efficiency:
-1. **Fetch** all note paths from Obsidian
-2. **Phase 1 — Prepare:** For each note, get content, skip if under 20 words, delete old chunks, split into chunks (heading-aware, 500-word with 100-word overlap), extract entities via LLM (cached), generate summary via LLM (cached), check delta hashes (skip unchanged chunks).
-3. **Phase 2 — Batch Embed:** All prepared chunks are embedded in a single batch call to Ollama (faster than per-note embedding).
-4. **Phase 3 — Finalize:** Store embedded chunks in ChromaDB with full metadata.
+Indexing orchestration with incremental updates and file watcher. Delegates work across three dedicated modules for efficiency:
+
+- **Phase 1 — `chunker.py`:** For each note, get content, skip if under 20 words, delete old chunks, split into chunks (heading-aware, 500-word with 100-word overlap), embed in batch via Ollama `/api/embed`, and upsert to ChromaDB. No LLM chat calls — purely chunk + embed + store.
+- **Phase 2a — `entity_extractor.py`:** Extract entities from each note via LLM (cached per content hash). Runs after Phase 1 completes.
+- **Phase 2b — `summarizer.py`:** Generate 2-3 sentence summaries via LLM (cached per content hash). Runs in parallel with entity extraction.
 
 Supports `SKIP_ENTITIES` and `SKIP_SUMMARIES` flags to skip LLM-dependent steps. Uses `_llm_chat_lock` semaphore to limit concurrent LLM calls during parallel indexing.
 
@@ -123,8 +131,32 @@ Semantic clustering module for grouping notes by meaning. Connected-components c
 
 Uses `chroma_store.get_all_embeddings()` to fetch embedding vectors. Has zero additional Python dependencies (pure NumPy/math).
 
+### chunker.py
+Phase 1 of the indexing pipeline: chunk, batch-embed, and store in ChromaDB. No LLM chat calls — only embedding. Handles heading-aware chunking, content delta hashing, wiki-link extraction, and frontmatter tag parsing. Prepares note data dicts for Phase 2 (extractor/summarizer) to fill in entity/summary fields.
+
+### entity_extractor.py
+Phase 2a of indexing: extracts entities from each note using the LLM. Results are cached per content hash (in-memory + `data/entity_cache.json`) to avoid re-extraction on incremental runs. Falls back gracefully — notes are indexed even if extraction fails.
+
+### summarizer.py
+Phase 2b of indexing: generates 2-3 sentence summaries via LLM. Cached per content hash (in-memory + `data/summary_cache.json`). Summary is stored in chunk-0's ChromaDB metadata and used by `query()`, `summarize_topic()`, and `tag_notes()` for compact context.
+
+### ranker.py
+Unified ranking pipeline combining semantic, entity, graph, and keyword retrieval signals. Provides a `Ranker` class with tunable weights (default: 0.40 semantic + 0.30 entity + 0.20 graph + 0.10 keyword). Supports intent-aware weight switching (`entity`, `keyword`, `graph` modes). Thread-safe for concurrent MCP access. Used by `search_notes`, `retrieve_notes`, and `composite_search` tools.
+
+### entity_relations.py
+Directed entity-to-entity relationship graph. Stores triples `(source, type, target)` with confidence scores. Supports relationship types: `works_on`, `uses`, `part_of`, `related_to`, `created_by`, `located_in`, `attends`. Persisted to JSON and used by `related_entities()` tool.
+
+### dashboard.py
+Standalone HTML dashboard generator. Gathers data from ChromaDB, graph store, entity store, and todos module, then produces a static HTML page with interactive visualizations. Can also serve live via a built-in HTTP server (port 8765). Triggered via CLI: `obsidian-ai dashboard --serve`.
+
+### todos.py
+Todo implementation layer (separate from MCP tools). Parses `todos.md` from the vault, provides CRUD operations, NL parsing for add-from-text, priority/due-date suggestion via LLM, and todo↔note linking. The `tools/todos.py` module wraps these as 20 MCP tools.
+
+### eval.py
+Retrieval evaluation benchmark. Loads query/judgment pairs from JSON, runs searches with configurable strategies (graph, summaries, entity expansion, community boost), computes nDCG and recall metrics, and prints formatted results. Triggered via `obsidian-ai eval`.
+
 ### mcp_server.py
-FastMCP server exposing 67 vault tools via stdio transport. All path parameters are auto-normalized (absolute or vault-relative). Includes a `health_check` tool for backend service status. Wraps all other modules for agent access. Logs all tool calls to `mcp_calls.log`.
+FastMCP server exposing 70 vault tools via stdio transport. All path parameters are auto-normalized (absolute or vault-relative). Includes a `health_check` tool for backend service status. Wraps all other modules for agent access. Logs all tool calls to `mcp_calls.log`.
 
 ## Data Flow
 
@@ -135,35 +167,52 @@ FastMCP server exposing 67 vault tools via stdio transport. All path parameters 
                                │ MCP (stdio)
                                ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                      mcp_server.py (67 tools)                    │
+│                      mcp_server.py (70 tools)                    │
 └────────┬─────────────────────────┬───────────────────────────────┘
          │                         │
          ▼                         ▼
 ┌──────────────┐          ┌──────────────────┐
 │  obsidian_   │          │  chroma_store    │
 │  client.py   │          │  + entity_store  │
-│  + wiki_links│          │  + graph_store   │
-└──────┬───────┘          └────────┬─────────┘
-       │                           │
-       ▼                           ▼
-┌──────────────┐          ┌──────────────────┐
-│  Obsidian    │          │  ChromaDB        │
-│  REST API    │          │  entities.json   │
-└──────┬───────┘          │  graph (memory)  │
-       │                  └──────────────────┘
-       ▼                  ┌──────────────┐
-┌──────────────┐          │  pipelines   │
-│  llm_client  │          │  ├─ query()  │
-│  ├─ embed()  │          │  ├─ tag()    │
-│  └─ chat()   │          │  ├─ extract  │
-└──────┬───────┘          │  │  entities()│
-       │                  │  ├─ expand   │
-       ▼                  │  │  query()  │
-┌──────────────┐          │  └─ route    │
-│  Ollama      │          │     query()  │
-│  ├─ nomic-embed-text    └──────────────┘
-│  └─ qwen3:8b
-└──────────────┘
+│  + wiki_links│          │  + entity_       │
+│  + todos     │          │    relations     │
+└──────┬───────┘          │  + graph_store   │
+       │                  │  + ranker        │
+       ▼                  └────────┬─────────┘
+┌──────────────┐                   │
+│  Obsidian    │                   ▼
+│  REST API    │          ┌──────────────────┐
+└──────┬───────┘          │  ChromaDB        │
+       │                  │  entities.json   │
+       ▼                  │  entity_rels.json│
+┌──────────────┐          │  graph (memory)  │
+│  llm_client  │          │  weights (cfg)   │
+│  ├─ embed()  │          └──────────────────┘
+│  └─ chat()   │          ┌──────────────────┐
+└──────┬───────┘          │  tools/_shared   │
+       │                  │  ├─ _hybrid_     │
+       ▼                  │  │   search()    │
+┌──────────────┐          │  ├─ _expand_     │
+│  Ollama      │          │  │  query()      │
+│  ├─ nomic-embed-text    │  ├─ _rewrite_    │
+│  └─ qwen3:4b │          │  │  query()      │
+└──────────────┘          │  └─ _group_by_   │
+                          │     note()       │
+                          └──────────────────┘
+                          ┌──────────────────┐
+                          │  pipelines.py    │
+                          │  ├─ query()      │
+                          │  ├─ tag_notes()  │
+                          │  ├─ extract_     │
+                          │  │   entities()  │
+                          │  ├─ expand_query │
+                          │  └─ route_query()│
+                          └──────────────────┘
+                          ┌──────────────────┐
+                          │  dashboard.py    │
+                          │  gather_data()   │
+                          │  → HTML output   │
+                          └──────────────────┘
 ```
 
 ## Chunking Strategy
@@ -177,13 +226,13 @@ Notes are split into overlapping chunks to stay within Ollama's embedding limit:
 ## LLM Integration
 
 ### Entity Extraction
-1. During indexing, each note's sanitized content is sent to Qwen3:8b with an extraction prompt
+1. During indexing, each note's sanitized content is sent to Qwen3:4b with an extraction prompt
 2. LLM returns JSON entities: `[{"name": "...", "type": "...", "confidence": 0.0-1.0}]`
 3. Entities are stored in `entity_store` and written as `entities_str` metadata on every chunk
 4. Results are cached per content hash (in-memory + `entity_cache.json`)
 
 ### Summary Generation
-1. During indexing, each note's sanitized content is sent to Qwen3:8b with a summarization prompt
+1. During indexing, each note's sanitized content is sent to Qwen3:4b with a summarization prompt
 2. Summary (2-3 sentences) is stored in chunk-0's ChromaDB metadata
 3. Passed through `retrieve()` results and used in `query()`, `summarize_topic()`, `tag_notes()` context
 4. Results are cached per content hash (in-memory + `summary_cache.json`)
@@ -218,3 +267,4 @@ The following patterns are skipped during vault traversal:
 | `__pycache__` | Python bytecode cache |
 | `node_modules` | Node.js dependencies |
 | `.excalidraw.md` | Excalidraw diagram files (JSON, not readable text) |
+| `.github` | GitHub Actions/workflows directory |

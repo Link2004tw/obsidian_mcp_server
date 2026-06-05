@@ -9,6 +9,7 @@ from .. import (
     chroma_store,
     config,
     entity_store,
+    graph_store,
     indexer,
     keyword_search,
     llm_client,
@@ -341,6 +342,127 @@ def switch_embedding_model(model_name: str) -> str:
         return f"Error: {e}"
 
 
+def add_note_to_subject(
+    subject: str,
+    title: str,
+    content: str,
+    tags: list[str] | None = None,
+) -> str:
+    """Add a note to a subject, auto-linking it into the wiki-link graph.
+
+    Creates the note under ``Subjects/{subject}/{title}.md`` with YAML
+    frontmatter tagged with the subject name plus any extra tags, and a
+    ``[[{subject}]]`` wiki-link to the subject hub note.
+
+    The subject hub note (``Subjects/{subject}/{subject}.md``) is created
+    automatically if it doesn't exist. A mutual backlink is added so the
+    new note and hub note are connected in the wiki-link graph.
+
+    The subject is also registered as an entity (type ``"Concept"``) so it
+    appears in entity searches.
+
+    Args:
+        subject: subject name (e.g. ``"Maria"``). Used as folder name, tag,
+            and entity name.
+        title: note title (e.g. ``"First Impression"``). Used as filename
+            (without ``.md``).
+        content: Markdown body content. Frontmatter will be auto-generated
+            — do not include a ``---`` header yourself.
+        tags: optional extra tags (e.g. ``["poem", "church"]``). The subject
+            tag is added automatically.
+
+    Returns:
+        A confirmation message with the note path.
+    """
+    log.info(f"add_note_to_subject — subject={subject}, title={title}, tags={tags}")
+
+    # Sanitize
+    safe_subject = re.sub(r'[<>:"/\\|?*]', "", subject).strip() or "untitled"
+    safe_title = re.sub(r'[<>:"/\\|?*]', "", title).strip() or "untitled"
+    safe_subject_lower = safe_subject.casefold().replace(" ", "-")
+
+    folder = f"Subjects/{safe_subject}"
+    hub_path = f"{folder}/{safe_subject}.md"
+    note_path = f"{folder}/{safe_title}.md"
+
+    # Collect tags
+    all_tags = [safe_subject_lower]
+    if tags:
+        for t in tags:
+            t_clean = str(t).strip().lower().replace(" ", "-")
+            if t_clean and t_clean not in all_tags:
+                all_tags.append(t_clean)
+
+    try:
+        # 1. Ensure hub note exists
+        hub_exists = True
+        try:
+            hub_content = obsidian_client.get_note(hub_path)
+        except Exception:
+            hub_exists = False
+
+        if not hub_exists:
+            hub_lines = [
+                "---",
+                "tags:",
+                f"  - {safe_subject_lower}",
+                "---",
+                "",
+                f"# {safe_subject}",
+                "",
+                f"Notes about {safe_subject}:",
+                "",
+            ]
+            hub_content = "\n".join(hub_lines)
+            obsidian_client.put_note(hub_path, hub_content)
+            graph_store.register_title(hub_path)
+
+        # 2. Write the new note with frontmatter + content + wiki-link
+        tag_lines = "\n".join(f"  - {t}" for t in all_tags)
+        body = content.strip()
+        backlink = f"[[{safe_subject}]]"
+        if backlink not in body:
+            body = body + f"\n\n{backlink}"
+        new_note_content = f"---\ntags:\n{tag_lines}\n---\n\n{body}"
+        obsidian_client.put_note(note_path, new_note_content)
+        graph_store.register_title(note_path)
+
+        # 3. Add backlink from hub note to new note
+        hub_link = f"[[{safe_title}]]"
+        if hub_link not in hub_content:
+            hub_content = hub_content.rstrip() + f"\n\n{hub_link}"
+            obsidian_client.put_note(hub_path, hub_content)
+
+        # 4. Add edges to the in-memory wiki-link graph
+        graph_store.add_edge(note_path, hub_path)
+        graph_store.add_edge(hub_path, note_path)
+        graph_store.flush()
+
+        # 5. Register subject as an entity (if not already)
+        entity_store.add_manual_entity(safe_subject, "Concept", aliases=[safe_subject])
+
+        # 6. Add entity→note edge for graph
+        if not graph_store.has_entity_edge("Concept", safe_subject, note_path):
+            graph_store.add_entity_edge("Concept", safe_subject, note_path)
+            graph_store.flush()
+
+        tag_summary = ", ".join(all_tags)
+        log.info(f"add_note_to_subject — written: {note_path}, tags=[{tag_summary}]")
+        lines = [
+            f"Note created: {note_path}",
+            f"  Subject:    {safe_subject}",
+            f"  Tags:       {tag_summary}",
+            f"  Graph:      linked to hub ({hub_path}) via [[wiki-links]]",
+            f"  Entity:     \"{safe_subject}\" registered as Concept",
+        ]
+        return "\n".join(lines)
+
+    except Exception as e:
+        log_error(log, "add_note_to_subject FAILED", exc=e,
+                  subject=subject, title=title)
+        return f"Error: {e}"
+
+
 __all_tools__ = [
     read_note,
     write_note,
@@ -354,6 +476,7 @@ __all_tools__ = [
     set_tags,
     batch_tag_notes,
     create_backlink,
+    add_note_to_subject,
     sync_index,
     switch_embedding_model,
 ]

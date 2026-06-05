@@ -36,7 +36,1825 @@
     "copilot/copilot-conversations/Yearning_for_Humanity@20260326_191201.md": [
       "Me/Quotes/Music Quotes.md"
     ],
-    "management/Lina/Quotes/Favourite phares and expressions.md": []
+    "management/Lina/Quotes/Favourite phares and expressions.md": [],
+    "__entity:Person:Andrew Ng": [
+      "Me/Courses/Road map for ai and cyber security.md",
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "Me/Courses/Road map for ai and cyber security.md": [],
+    "__entity:Person:Claudio Corsi": [
+      "Me/Courses/Road map for ai and cyber security.md"
+    ],
+    "__entity:Person:Michael S. Smith": [
+      "Me/Courses/Road map for ai and cyber security.md"
+    ],
+    "__entity:Person:Adam Shostack": [
+      "Me/Courses/Road map for ai and cyber security.md"
+    ],
+    "__entity:Concept:AI For Everyone": [
+      "Me/Courses/Road map for ai and cyber security.md"
+    ],
+    "__entity:Concept:AI in Cybersecurity": [
+      "Me/Courses/Road map for ai and cyber security.md"
+    ],
+    "__entity:Technology:TensorFlow": [
+      "Me/Courses/Road map for ai and cyber security.md",
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:PyTorch": [
+      "Me/Courses/Road map for ai and cyber security.md",
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:GANs": [
+      "Me/Courses/Road map for ai and cyber security.md"
+    ],
+    "__entity:Technology:SIEM": [
+      "Me/Courses/Road map for ai and cyber security.md"
+    ],
+    "__entity:Concept:GDPR": [
+      "Me/Courses/Road map for ai and cyber security.md"
+    ],
+    "__entity:Concept:Machine Learning": [
+      "Me/Courses/Road map for ai and cyber security.md"
+    ],
+    "__entity:Concept:Malware Detection": [
+      "Me/Courses/Road map for ai and cyber security.md"
+    ],
+    "__entity:Concept:Phishing Detection": [
+      "Me/Courses/Road map for ai and cyber security.md"
+    ],
+    "__entity:Concept:Deep Learning for Advanced Applications": [
+      "Me/Courses/Road map for ai and cyber security.md"
+    ],
+    "__entity:Location:Coursera": [
+      "Me/Courses/Road map for ai and cyber security.md"
+    ],
+    "__entity:Location:edX": [
+      "Me/Courses/Road map for ai and cyber security.md"
+    ],
+    "__entity:Project:Machine Learning for Cybersecurity": [
+      "Me/Courses/Road map for ai and cyber security.md"
+    ],
+    "__entity:Project:Applied Machine Learning for Cybersecurity": [
+      "Me/Courses/Road map for ai and cyber security.md"
+    ],
+    "Me/Courses/Road map for data analyst.md": [],
+    "__entity:Project:Andrew Ng's Machine Learning": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:Coursera": [
+      "Me/Courses/Road map for data analyst.md",
+      "Me/To-do list.md"
+    ],
+    "__entity:Technology:Udemy": [
+      "Me/Courses/Road map for data analyst.md",
+      "Me/To-do list.md"
+    ],
+    "__entity:Technology:AWS": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:Google Cloud": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:Kaggle": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:UCI Machine Learning Repository": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:Python": [
+      "Me/Courses/Road map for data analyst.md",
+      "Me/Notes/Ba2olak eh.md",
+      "Me/task.md"
+    ],
+    "__entity:Technology:SQL": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:Scikit-learn": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:Keras": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:Pandas": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:NumPy": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:Matplotlib": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:Seaborn": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:ggplot2": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:Excel": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:Google Sheets": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:Power BI": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:Tableau": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:Plotly": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:NLTK": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:spaCy": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:Hugging Face": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:Flask": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Technology:Django": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Concept:Linear Algebra": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Concept:Probability and Statistics": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Concept:Calculus": [
+      "Me/Courses/Road map for data analyst.md"
+    ],
+    "__entity:Concept:John Wick": [
+      "Me/Friends/Favourite Lists/Abram.md"
+    ],
+    "Me/Friends/Favourite Lists/Abram.md": [],
+    "__entity:Concept:GTA 5": [
+      "Me/Friends/Favourite Lists/Abram.md"
+    ],
+    "__entity:Concept:Cooking": [
+      "Me/Friends/Favourite Lists/Abram.md"
+    ],
+    "__entity:Concept:Blinding Lights": [
+      "Me/Friends/Favourite Lists/Abram.md"
+    ],
+    "__entity:Person:The Weeknd": [
+      "Me/Friends/Favourite Lists/Abram.md"
+    ],
+    "__entity:Concept:Starboy": [
+      "Me/Friends/Favourite Lists/Abram.md"
+    ],
+    "__entity:Concept:We Are The People": [
+      "Me/Friends/Favourite Lists/Abram.md"
+    ],
+    "__entity:Concept:Memories": [
+      "Me/Friends/Favourite Lists/Abram.md"
+    ],
+    "__entity:Person:Marwan Pablo": [
+      "Me/Friends/Favourite Lists/Abram.md"
+    ],
+    "__entity:Concept:Physical touch": [
+      "Me/Friends/Favourite Lists/Abram.md",
+      "Me/Friends/Favourite Lists/Ibrahim.md"
+    ],
+    "__entity:Concept:Act of service": [
+      "Me/Friends/Favourite Lists/Abram.md"
+    ],
+    "__entity:Concept:Love language": [
+      "Me/Friends/Favourite Lists/Abram.md"
+    ],
+    "__entity:Concept:Customized gift": [
+      "Me/Friends/Favourite Lists/Abram.md"
+    ],
+    "__entity:Concept:Monopoly Deal": [
+      "Me/Friends/Favourite Lists/Figary.md"
+    ],
+    "Me/Friends/Favourite Lists/Figary.md": [],
+    "__entity:Concept:old currency collecting": [
+      "Me/Friends/Favourite Lists/Figary.md"
+    ],
+    "__entity:Event:How I Met Your Mother": [
+      "Me/Friends/Favourite Lists/Ibrahim.md"
+    ],
+    "Me/Friends/Favourite Lists/Ibrahim.md": [],
+    "__entity:Project:Cairokee": [
+      "Me/Friends/Favourite Lists/Ibrahim.md"
+    ],
+    "__entity:Person:Rashad Combal": [
+      "Me/Friends/Favourite Lists/Ibrahim.md"
+    ],
+    "__entity:Concept:Electric guitar based music": [
+      "Me/Friends/Favourite Lists/Ibrahim.md"
+    ],
+    "__entity:Location:Nile": [
+      "Me/Friends/Favourite Lists/Ibrahim.md"
+    ],
+    "__entity:Location:Sea": [
+      "Me/Friends/Favourite Lists/Ibrahim.md",
+      "Me/Poems/I am the arrogant.md"
+    ],
+    "__entity:Project:La Casa de Papel": [
+      "Me/Friends/Favourite Lists/Karim wagih (benchat).md"
+    ],
+    "Me/Friends/Favourite Lists/Karim wagih (benchat).md": [],
+    "__entity:Project:John Wick": [
+      "Me/Friends/Favourite Lists/Karim wagih (benchat).md"
+    ],
+    "__entity:Project:Fortnite": [
+      "Me/Friends/Favourite Lists/Karim wagih (benchat).md",
+      "Me/What I like.md"
+    ],
+    "__entity:Concept:Bodybuilding": [
+      "Me/Friends/Favourite Lists/Karim wagih (benchat).md"
+    ],
+    "__entity:Concept:Black": [
+      "Me/Friends/Favourite Lists/Karim wagih (benchat).md"
+    ],
+    "__entity:Concept:Actions": [
+      "Me/Friends/Favourite Lists/Karim wagih (benchat).md"
+    ],
+    "__entity:Concept:Egyptian hiphop": [
+      "Me/Friends/Favourite Lists/Karim wagih (benchat).md"
+    ],
+    "__entity:Concept:Modern Family": [
+      "Me/Friends/Favourite Lists/Miro.md"
+    ],
+    "Me/Friends/Favourite Lists/Miro.md": [],
+    "__entity:Person:Amr Diab": [
+      "Me/Friends/Favourite Lists/Pavly.md"
+    ],
+    "Me/Friends/Favourite Lists/Pavly.md": [],
+    "__entity:Person:Tamer Hosny": [
+      "Me/Friends/Favourite Lists/Pavly.md"
+    ],
+    "__entity:Person:Sherine Abdelaziz": [
+      "Me/Friends/Favourite Lists/Pavly.md"
+    ],
+    "__entity:Person:Nelly": [
+      "Me/Friends/Favourite Lists/Pavly.md"
+    ],
+    "__entity:Concept:Kamel el 3adad": [
+      "Me/Friends/Favourite Lists/Pavly.md"
+    ],
+    "__entity:Project:Attack on Titan": [
+      "Me/Friends/Favourite Lists/youssef magued.md"
+    ],
+    "Me/Friends/Favourite Lists/youssef magued.md": [],
+    "__entity:Project:Horizon": [
+      "Me/Friends/Favourite Lists/youssef magued.md"
+    ],
+    "__entity:Project:God of War": [
+      "Me/Friends/Favourite Lists/youssef magued.md"
+    ],
+    "__entity:Project:Shadow of War": [
+      "Me/Friends/Favourite Lists/youssef magued.md"
+    ],
+    "__entity:Concept:Quantum mechanics": [
+      "Me/Friends/Favourite Lists/youssef magued.md"
+    ],
+    "__entity:Concept:Analytic number theory": [
+      "Me/Friends/Favourite Lists/youssef magued.md"
+    ],
+    "__entity:Person:Maria": [
+      "Me/Friends/Maria.md",
+      "Me/Poems/I think you are perfect.md",
+      "Subjects/Maria/Maria.md",
+      "copilot/copilot-conversations/Advice_Needed_on_Maria@20260515_183916.md",
+      "copilot/copilot-conversations/Organizing_Personal_Notes@20260516_135303.md",
+      "copilot/copilot-conversations/Poem_and_Its_Intended_Audience@20260529_150217.md",
+      "copilot/copilot-conversations/Read_Maria_the_Perfect@20260513_130650.md",
+      "copilot/copilot-conversations/User_Asks_for_Opinion@20260525_150920.md",
+      "copilot/copilot-conversations/Your_Thoughts@20260525_151423.md"
+    ],
+    "Me/Friends/Maria.md": [
+      "Subjects/Maria/Maria.md"
+    ],
+    "__entity:Concept:the poem": [
+      "Me/Friends/Maria.md"
+    ],
+    "__entity:Concept:Love": [
+      "Me/Friends/Maria.md",
+      "Me/Poems/I think you are perfect.md"
+    ],
+    "__entity:Concept:Emotional Growth": [
+      "Me/Friends/Maria.md"
+    ],
+    "__entity:Concept:Admiration": [
+      "Me/Friends/Maria.md",
+      "Me/Poems/I think you are perfect.md"
+    ],
+    "__entity:Project:Urgent and Important": [
+      "Me/General Todo list (Todoist).md"
+    ],
+    "Me/General Todo list (Todoist).md": [],
+    "__entity:Project:Personal To-do list": [
+      "Me/General Todo list (Todoist).md"
+    ],
+    "__entity:Project:Education To-do list": [
+      "Me/General Todo list (Todoist).md"
+    ],
+    "__entity:Project:Church Todo List": [
+      "Me/General Todo list (Todoist).md"
+    ],
+    "__entity:Concept:#Personal life": [
+      "Me/General Todo list (Todoist).md"
+    ],
+    "__entity:Concept:#Education": [
+      "Me/General Todo list (Todoist).md"
+    ],
+    "__entity:Concept:#church": [
+      "Me/General Todo list (Todoist).md"
+    ],
+    "__entity:Person:Lina": [
+      "Me/General Todo list.md",
+      "Me/My growth Journey.md",
+      "Me/Notes/favourite list.md",
+      "Me/Poems/A future with you.md",
+      "Me/Poems/Happy birthday linky.md",
+      "Me/Poems/I love deaf girl.md",
+      "Me/Poems/I need your clarity G.md",
+      "Me/Poems/In secret I love you.md",
+      "Me/Poems/Lili's birthday 1.md",
+      "Me/Poems/Lina's 19th bd.md",
+      "Me/Poems/Love.md",
+      "Me/Poems/My lina.md",
+      "Me/Poems/Valentine.md",
+      "Me/To-do list.md",
+      "copilot/copilot-conversations/Advice_Needed_on_Maria@20260515_183916.md",
+      "copilot/copilot-conversations/Growth_Journey_Reflection@20260324_192850.md",
+      "copilot/copilot-conversations/I_Am_Spiraling_Again@20260421_115417.md",
+      "copilot/copilot-conversations/Love_Without_Reply@20260323_183236.md",
+      "copilot/copilot-conversations/Read_Maria_the_Perfect@20260513_130650.md",
+      "copilot/copilot-conversations/Seeking_Information,_Feeling_Fear@20260513_120038.md",
+      "copilot/copilot-conversations/Still_Guilty@20260326_032354.md",
+      "management/Lina/Lina birthday gift ideas.md",
+      "management/Lina/Lina favourite stuff.md",
+      "management/Lina/Love letters/Second love letter 2-12-2024.md",
+      "management/Lina/Notes/You are the first person i miss.md",
+      "management/Lina/Quotes/Lana Del Ray.md",
+      "management/Lina/Quotes/Taylor swift.md"
+    ],
+    "Me/General Todo list.md": [],
+    "__entity:Technology:Ink plugin": [
+      "Me/General Todo list.md"
+    ],
+    "__entity:Concept:Fear": [
+      "Me/General Todo list.md"
+    ],
+    "__entity:Concept:Image-to-text conversion": [
+      "Me/General Todo list.md"
+    ],
+    "__entity:Concept:Cooking eggs": [
+      "Me/General Todo list.md"
+    ],
+    "__entity:Location:Gym": [
+      "Me/General Todo list.md"
+    ],
+    "__entity:Location:Church": [
+      "Me/General Todo list.md",
+      "Me/Poems/I think you are perfect.md",
+      "Me/To maria.md",
+      "copilot/copilot-conversations/Still_Guilty@20260326_032354.md"
+    ],
+    "__entity:Project:mini Kindle": [
+      "Me/My Own Projects/Kindle.md"
+    ],
+    "Me/My Own Projects/Kindle.md": [],
+    "__entity:Person:Anonymous maker": [
+      "Me/My Own Projects/Kindle.md"
+    ],
+    "__entity:Technology:Wokwi": [
+      "Me/My Own Projects/Kindle.md"
+    ],
+    "__entity:Hardware:Raspberry Pi Pico": [
+      "Me/My Own Projects/Kindle.md"
+    ],
+    "__entity:Hardware:2.9-inch e-paper display": [
+      "Me/My Own Projects/Kindle.md"
+    ],
+    "__entity:Hardware:LiPo battery": [
+      "Me/My Own Projects/Kindle.md"
+    ],
+    "__entity:Hardware:pushbuttons": [
+      "Me/My Own Projects/Kindle.md"
+    ],
+    "__entity:Hardware:slide switch": [
+      "Me/My Own Projects/Kindle.md"
+    ],
+    "__entity:Technology:MicroPython environment": [
+      "Me/My Own Projects/Kindle.md"
+    ],
+    "__entity:Project:Quotes buddy": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "Me/My Own Projects/Project Ideas.md": [],
+    "__entity:Project:E paper reader": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Project:I love U led": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Project:mp3 player": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Project:dumb phone": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Project:chatting website": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Project:desk buddy": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Project:robo dog": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Project:meeting whisper note automatic taker": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Hardware:Raspberry Pi": [
+      "Me/My Own Projects/Project Ideas.md",
+      "Me/task.md"
+    ],
+    "__entity:Project:Raspberry Pi ai assistant": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Hardware:ESP": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Project:esp business card": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Project:esp rf killer": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Project:hacking device": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Project:batch ai translator": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Project:mcp obsidian server": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Concept:Rust": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Concept:Rust kernel course": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Concept:Flutter": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Concept:Cyber security": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Concept:ethical hacking": [
+      "Me/My Own Projects/Project Ideas.md"
+    ],
+    "__entity:Project:Year in Moments Digital Timeline": [
+      "Me/My Own Projects/Projects.md"
+    ],
+    "Me/My Own Projects/Projects.md": [],
+    "__entity:Project:Interactive Letter Experience": [
+      "Me/My Own Projects/Projects.md"
+    ],
+    "__entity:Project:Memory-Based AI": [
+      "Me/My Own Projects/Projects.md"
+    ],
+    "__entity:Project:Music Project": [
+      "Me/My Own Projects/Projects.md"
+    ],
+    "__entity:Project:Letters I Never Sent": [
+      "Me/My Own Projects/Projects.md"
+    ],
+    "__entity:Project:Kindle Project": [
+      "Me/My Own Projects/Projects.md"
+    ],
+    "__entity:Project:Growth Tracker Project": [
+      "Me/My Own Projects/Projects.md"
+    ],
+    "__entity:Project:Chat Website": [
+      "Me/My Own Projects/Projects.md"
+    ],
+    "__entity:Project:Face Detection Project": [
+      "Me/My Own Projects/Projects.md"
+    ],
+    "__entity:Project:Physical Book of Poems": [
+      "Me/My Own Projects/Projects.md"
+    ],
+    "__entity:Technology:OpenCV": [
+      "Me/My Own Projects/Projects.md"
+    ],
+    "__entity:Hardware:Kindle": [
+      "Me/My Own Projects/Projects.md"
+    ],
+    "__entity:Person:link": [
+      "Me/My growth Journey.md"
+    ],
+    "__entity:Project:Growth Tracker Note": [
+      "Me/My growth Journey.md"
+    ],
+    "__entity:Concept:anxiety": [
+      "Me/My growth Journey.md"
+    ],
+    "__entity:Concept:anxious attachment style": [
+      "Me/My growth Journey.md"
+    ],
+    "__entity:Concept:saviour complex": [
+      "Me/My growth Journey.md"
+    ],
+    "__entity:Concept:transactional love": [
+      "Me/My growth Journey.md"
+    ],
+    "__entity:Concept:anger": [
+      "Me/My growth Journey.md"
+    ],
+    "__entity:Concept:jealousy": [
+      "Me/My growth Journey.md"
+    ],
+    "__entity:Concept:trust": [
+      "Me/My growth Journey.md"
+    ],
+    "__entity:Concept:God": [
+      "Me/My growth Journey.md",
+      "Me/Poems/A future with you.md",
+      "Me/Poems/For God you're enough.md",
+      "Me/Poems/I need your clarity G.md",
+      "copilot/copilot-conversations/Growth_Journey_Reflection@20260324_192850.md",
+      "copilot/copilot-conversations/Seeking_Information,_Feeling_Fear@20260513_120038.md",
+      "copilot/copilot-conversations/Still_Guilty@20260326_032354.md"
+    ],
+    "__entity:Person:Kiro Fady": [
+      "Me/Names.md"
+    ],
+    "Me/Names.md": [],
+    "__entity:Person:Milad": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Abram": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Atef": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Hosney": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Wilson": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Nagib": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Youssef Bassem": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Ramez": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Ashraf": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Nader Maged": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Anton Enanuel": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Sherif": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Faik": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Mina": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Marc Victor": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Ehab": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Fady": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Fares": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Michel": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Sameh": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Emad": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Tamer": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Baher": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Wagih": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Micheal Hicham": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Samy": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Wafik": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Nagi Yousry": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Paula": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Tony Magued": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Ebram Philo Amir David": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Pavly Bishoy John Geovany George Ramy": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Chris Fady Kevin Mathew": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Joseph George Refaat George Wagdy": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Daniel Shady Martin Magued": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Luis Beshoy Emad Tony": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Karim Wagih": [
+      "Me/Names.md",
+      "Me/Who Am I.md"
+    ],
+    "__entity:Person:Bassem": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Tarek": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Ghlay": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Mina Hani": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Ekrami": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Tawfik": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Gerges": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Remon": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Filto": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Migel Ibrahim Boules": [
+      "Me/Names.md"
+    ],
+    "__entity:Person:Carol Antony Andrew": [
+      "Me/Names.md"
+    ],
+    "__entity:Project:Kiro": [
+      "Me/Names.md"
+    ],
+    "__entity:Project:Karas": [
+      "Me/Names.md"
+    ],
+    "__entity:Project:Castour": [
+      "Me/Names.md"
+    ],
+    "__entity:Project:Fam": [
+      "Me/Names.md"
+    ],
+    "__entity:Project:Petronious": [
+      "Me/Names.md"
+    ],
+    "__entity:Project:cryptography": [
+      "Me/Notes/Ba2olak eh.md"
+    ],
+    "__entity:Project:Fernet": [
+      "Me/Notes/Ba2olak eh.md"
+    ],
+    "__entity:Technology:secrets": [
+      "Me/Notes/Ba2olak eh.md"
+    ],
+    "__entity:Technology:base64": [
+      "Me/Notes/Ba2olak eh.md"
+    ],
+    "__entity:Concept:generate_key": [
+      "Me/Notes/Ba2olak eh.md"
+    ],
+    "__entity:Concept:encrypt_text": [
+      "Me/Notes/Ba2olak eh.md"
+    ],
+    "__entity:Concept:decrypt_text": [
+      "Me/Notes/Ba2olak eh.md"
+    ],
+    "__entity:Person:Farida Mared": [
+      "Me/Notes/favourite list.md"
+    ],
+    "Me/Notes/favourite list.md": [],
+    "__entity:Person:Sbara Rakesa": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Person:Pavly": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Person:Lara": [
+      "Me/Notes/favourite list.md",
+      "copilot/copilot-conversations/Read_Maria_the_Perfect@20260513_130650.md",
+      "copilot/copilot-conversations/User_Asks_for_Opinion@20260525_150920.md"
+    ],
+    "__entity:Person:Andrea": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Person:Lana del Rey": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Person:Lewis Hamilton": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Person:Taylor Swift": [
+      "Me/Notes/favourite list.md",
+      "Me/Poems/My beautiful love.md",
+      "management/Lina/Lina birthday gift ideas.md",
+      "management/Lina/Lina favourite stuff.md",
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:Cars": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Ferrari F1": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Brownies": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Mug": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Christmas pj's": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Keychains": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Socks": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Monsters University": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Home Alone": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Laptop sleeve": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Fluffy blanket": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Accessories": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Chocolates": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Reading": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Nail polish": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Pencil case": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Thermal mug": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Chocolate (msh strawberry)": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Cap": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Scarves": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Silicon phone case": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Marvelous creations (pink)": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Sour strips": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Harry potter": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Little women": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:The Mortal instruments": [
+      "Me/Notes/favourite list.md"
+    ],
+    "__entity:Concept:Dark green": [
+      "Me/Notes/favourite list.md"
+    ],
+    "Me/Poems/A future with you.md": [],
+    "__entity:Concept:Home": [
+      "Me/Poems/A future with you.md"
+    ],
+    "__entity:Concept:Eden": [
+      "Me/Poems/A future with you.md"
+    ],
+    "__entity:Concept:Eve": [
+      "Me/Poems/A future with you.md"
+    ],
+    "__entity:Person:Father": [
+      "Me/Poems/Building my Garden.md"
+    ],
+    "Me/Poems/Building my Garden.md": [],
+    "__entity:Person:Lord": [
+      "Me/Poems/Building my Garden.md",
+      "Me/Poems/I am the arrogant.md"
+    ],
+    "__entity:Person:Angel": [
+      "Me/Poems/Building my Garden.md"
+    ],
+    "__entity:Person:Smartian women": [
+      "Me/Poems/Building my Garden.md"
+    ],
+    "__entity:Concept:spell brewing": [
+      "Me/Poems/Building my Garden.md"
+    ],
+    "__entity:Location:garden": [
+      "Me/Poems/Building my Garden.md"
+    ],
+    "Me/Poems/For God you're enough.md": [],
+    "__entity:Concept:Lord": [
+      "Me/Poems/For God you're enough.md",
+      "copilot/copilot-conversations/Your_Thoughts@20260422_210230.md"
+    ],
+    "__entity:Person:Christ": [
+      "Me/Poems/For God you're enough.md"
+    ],
+    "__entity:Concept:Holy name": [
+      "Me/Poems/For God you're enough.md"
+    ],
+    "__entity:Concept:Sun": [
+      "Me/Poems/For God you're enough.md",
+      "Me/Poems/I am the arrogant.md"
+    ],
+    "__entity:Concept:Moon": [
+      "Me/Poems/For God you're enough.md"
+    ],
+    "__entity:Concept:Saint": [
+      "Me/Poems/For God you're enough.md"
+    ],
+    "__entity:Location:Troy": [
+      "Me/Poems/Girl i liked from far away.md"
+    ],
+    "Me/Poems/Girl i liked from far away.md": [],
+    "Me/Poems/Happy birthday linky.md": [],
+    "__entity:Concept:Angel": [
+      "Me/Poems/Happy birthday linky.md"
+    ],
+    "__entity:Concept:Friendship": [
+      "Me/Poems/Happy birthday linky.md",
+      "Me/Poems/Hi old friend.md"
+    ],
+    "Me/Poems/Hi old friend.md": [],
+    "Me/Poems/I am the arrogant.md": [],
+    "__entity:Person:God": [
+      "Me/Poems/I am the arrogant.md"
+    ],
+    "__entity:Concept:Creator": [
+      "Me/Poems/I am the arrogant.md",
+      "copilot/copilot-conversations/Your_Thoughts@20260422_210230.md"
+    ],
+    "__entity:Person:Daniel": [
+      "Me/Poems/I am the arrogant.md"
+    ],
+    "__entity:Location:Mountains": [
+      "Me/Poems/I am the arrogant.md"
+    ],
+    "__entity:Concept:Water": [
+      "Me/Poems/I am the arrogant.md"
+    ],
+    "__entity:Concept:Storm": [
+      "Me/Poems/I am the arrogant.md"
+    ],
+    "__entity:Concept:Flood": [
+      "Me/Poems/I am the arrogant.md"
+    ],
+    "__entity:Person:Princess of the Nations": [
+      "Me/Poems/I am tired of far away love.md"
+    ],
+    "Me/Poems/I am tired of far away love.md": [],
+    "__entity:Person:Lili": [
+      "Me/Poems/I found my love.md",
+      "management/Lina/Love letters/Second love letter 2-12-2024.md",
+      "management/Lina/Love letters/Third love letter 12-2-25.md",
+      "management/Lina/Song.md"
+    ],
+    "Me/Poems/I found my love.md": [],
+    "__entity:Person:Linky": [
+      "Me/Poems/I found my love.md",
+      "management/Lina/Love letters/First love letter 29-12-2024.md"
+    ],
+    "Me/Poems/I love deaf girl.md": [],
+    "Me/Poems/I need your clarity G.md": [],
+    "Me/Poems/I think you are perfect.md": [],
+    "__entity:Concept:Poem": [
+      "Me/Poems/I think you are perfect.md"
+    ],
+    "__entity:Concept:Devotion": [
+      "Me/Poems/I think you are perfect.md"
+    ],
+    "__entity:Concept:Vulnerability": [
+      "Me/Poems/I think you are perfect.md"
+    ],
+    "__entity:Concept:Passion": [
+      "Me/Poems/I think you are perfect.md"
+    ],
+    "Me/Poems/In secret I love you.md": [],
+    "__entity:Concept:Black hole": [
+      "Me/Poems/In secret I love you.md"
+    ],
+    "__entity:Concept:deep ocean": [
+      "Me/Poems/In secret I love you.md"
+    ],
+    "__entity:Concept:demons": [
+      "Me/Poems/In secret I love you.md"
+    ],
+    "__entity:Concept:beasts": [
+      "Me/Poems/In secret I love you.md"
+    ],
+    "Me/Poems/Lili's birthday 1.md": [],
+    "__entity:Event:Birthday": [
+      "Me/Poems/Lili's birthday 1.md"
+    ],
+    "Me/Poems/Lina's 19th bd.md": [],
+    "Me/Poems/Love.md": [],
+    "__entity:Person:Mora": [
+      "Me/Poems/Mora.md"
+    ],
+    "Me/Poems/Mora.md": [],
+    "__entity:Concept:Ruby": [
+      "Me/Poems/Mora.md"
+    ],
+    "__entity:Person:Ed Sheeran": [
+      "Me/Poems/My beautiful love.md",
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "Me/Poems/My beautiful love.md": [],
+    "Me/Poems/My lina.md": [],
+    "__entity:Person:Joy": [
+      "Me/Poems/Old love I want you again.md"
+    ],
+    "Me/Poems/Old love I want you again.md": [],
+    "__entity:Person:Winry": [
+      "Me/Poems/Old love I want you again.md"
+    ],
+    "__entity:Person:Edward": [
+      "Me/Poems/Old love I want you again.md"
+    ],
+    "__entity:Person:Jasmin": [
+      "Me/Poems/To the girl who asked.md"
+    ],
+    "Me/Poems/To the girl who asked.md": [],
+    "Me/Poems/Valentine.md": [],
+    "__entity:Person:Hiromu Arakawa": [
+      "Me/Quotes/Anime Quotes.md"
+    ],
+    "Me/Quotes/Anime Quotes.md": [],
+    "__entity:Concept:Equivalent Exchange": [
+      "Me/Quotes/Anime Quotes.md"
+    ],
+    "__entity:Concept:Alchemy": [
+      "Me/Quotes/Anime Quotes.md"
+    ],
+    "__entity:Concept:Fullmetal": [
+      "Me/Quotes/Anime Quotes.md"
+    ],
+    "__entity:Person:Link": [
+      "Me/Quotes/Gaming Quotes.md",
+      "Me/Who Am I.md"
+    ],
+    "Me/Quotes/Gaming Quotes.md": [],
+    "__entity:Hardware:Master Sword": [
+      "Me/Quotes/Gaming Quotes.md"
+    ],
+    "__entity:Project:perfect-machine": [
+      "Me/Quotes/Music Quotes.md"
+    ],
+    "__entity:Project:silent-mind": [
+      "Me/Quotes/Music Quotes.md"
+    ],
+    "__entity:Project:Take Aim": [
+      "Me/Quotes/Music Quotes.md"
+    ],
+    "__entity:Project:JAWS": [
+      "Me/Quotes/Music Quotes.md"
+    ],
+    "__entity:Project:Look in your eyes": [
+      "Me/Quotes/Music Quotes.md"
+    ],
+    "__entity:Project:Dangerous to me": [
+      "Me/Quotes/Music Quotes.md"
+    ],
+    "__entity:Project:Can't Resist You": [
+      "Me/Quotes/Music Quotes.md"
+    ],
+    "__entity:Project:Too young": [
+      "Me/Quotes/Music Quotes.md"
+    ],
+    "__entity:Project:Devil in my details": [
+      "Me/Quotes/Music Quotes.md"
+    ],
+    "__entity:Project:Stuck Hollow Alone": [
+      "Me/Quotes/Music Quotes.md"
+    ],
+    "__entity:Project:Nothing but Negativity": [
+      "Me/Quotes/Music Quotes.md"
+    ],
+    "__entity:Person:Friedrich Nietzsche": [
+      "Me/Quotes/Random Quotes.md"
+    ],
+    "__entity:Person:Steve Almon": [
+      "Me/Quotes/Random Quotes.md"
+    ],
+    "__entity:Person:Virginia Woolf": [
+      "Me/Quotes/Random Quotes.md"
+    ],
+    "__entity:Project:The fox from the boy, the mole, the fox and the horse": [
+      "Me/Quotes/Random Quotes.md"
+    ],
+    "__entity:Concept:love": [
+      "Me/Quotes/Random Quotes.md"
+    ],
+    "__entity:Concept:broken": [
+      "Me/Quotes/Random Quotes.md"
+    ],
+    "__entity:Concept:brain": [
+      "Me/Quotes/Random Quotes.md"
+    ],
+    "__entity:Concept:mind": [
+      "Me/Quotes/Random Quotes.md"
+    ],
+    "__entity:Concept:suicide": [
+      "Me/Quotes/Random Quotes.md"
+    ],
+    "__entity:Concept:mind-tricks": [
+      "Me/Quotes/Random Quotes.md"
+    ],
+    "__entity:Concept:Things-turn-out-best": [
+      "Me/Quotes/Random Quotes.md"
+    ],
+    "__entity:Person:Fyodor Dostoyevsky": [
+      "Me/Test.md"
+    ],
+    "Me/Test.md": [],
+    "__entity:Person:Franz Kafka": [
+      "Me/Test.md"
+    ],
+    "__entity:Person:Sonya": [
+      "Me/Test.md"
+    ],
+    "__entity:Person:Raskolnikov": [
+      "Me/Test.md"
+    ],
+    "__entity:Concept:The Trial": [
+      "Me/Test.md"
+    ],
+    "__entity:Concept:Test": [
+      "Me/Test.md"
+    ],
+    "__entity:Location:Me": [
+      "Me/Test.md"
+    ],
+    "__entity:Person:Miss Lillian": [
+      "Me/To maria.md"
+    ],
+    "__entity:Location:AUC": [
+      "Me/To maria.md"
+    ],
+    "__entity:Location:ASU": [
+      "Me/To maria.md"
+    ],
+    "__entity:Concept:Jaws": [
+      "Me/To maria.md"
+    ],
+    "__entity:Person:Anabeth": [
+      "Me/To-do list.md"
+    ],
+    "__entity:Project:howabout": [
+      "Me/To-do list.md"
+    ],
+    "__entity:Project:Next Course": [
+      "Me/To-do list.md"
+    ],
+    "__entity:Project:AdonisJs Course": [
+      "Me/To-do list.md"
+    ],
+    "__entity:Project:Flutter Course": [
+      "Me/To-do list.md"
+    ],
+    "__entity:Project:Networking Course": [
+      "Me/To-do list.md"
+    ],
+    "__entity:Concept:Data analyst courses": [
+      "Me/To-do list.md"
+    ],
+    "__entity:Concept:Cyber security courses": [
+      "Me/To-do list.md"
+    ],
+    "__entity:Concept:Goodbye Story": [
+      "Me/To-do list.md"
+    ],
+    "__entity:Project:Mood Album": [
+      "Me/To-do list.md"
+    ],
+    "__entity:Project:GUI Course": [
+      "Me/Today's To-do list.md"
+    ],
+    "Me/Today's To-do list.md": [],
+    "__entity:Project:Java OOP Course": [
+      "Me/Today's To-do list.md"
+    ],
+    "__entity:Project:OOP with Java": [
+      "Me/Today's To-do list.md"
+    ],
+    "__entity:Concept:One Direction": [
+      "Me/Today's To-do list.md",
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:Church": [
+      "Me/Today's To-do list.md"
+    ],
+    "__entity:Concept:Diff": [
+      "Me/Today's To-do list.md"
+    ],
+    "__entity:Person:إبْرَاهِيمُ": [
+      "Me/Verses.md"
+    ],
+    "Me/Verses.md": [],
+    "__entity:Person:أَيُّوبُ": [
+      "Me/Verses.md"
+    ],
+    "__entity:Concept:الرب": [
+      "Me/Verses.md"
+    ],
+    "__entity:Project:كتاب رحلة إلى المرتفعات": [
+      "Me/Verses.md"
+    ],
+    "__entity:Concept:Lakers": [
+      "Me/What I like.md"
+    ],
+    "Me/What I like.md": [],
+    "__entity:Person:Kobe Bryant": [
+      "Me/What I like.md"
+    ],
+    "__entity:Project:Zelda": [
+      "Me/What I like.md"
+    ],
+    "__entity:Concept:Master sword": [
+      "Me/What I like.md"
+    ],
+    "__entity:Concept:Hylian shield": [
+      "Me/What I like.md"
+    ],
+    "__entity:Concept:Clawshot": [
+      "Me/What I like.md"
+    ],
+    "__entity:Project:Call of Duty": [
+      "Me/What I like.md"
+    ],
+    "__entity:Project:Jujutsu Kaisen": [
+      "Me/What I like.md"
+    ],
+    "__entity:Person:Gojo": [
+      "Me/What I like.md"
+    ],
+    "__entity:Person:Yuji": [
+      "Me/What I like.md"
+    ],
+    "__entity:Concept:Inverse Spear of Heaven": [
+      "Me/What I like.md"
+    ],
+    "__entity:Project:Bleach": [
+      "Me/What I like.md"
+    ],
+    "__entity:Person:Ichigo Vasto Lorde": [
+      "Me/What I like.md"
+    ],
+    "__entity:Concept:Ichigo's Zampacto": [
+      "Me/What I like.md"
+    ],
+    "__entity:Project:Chainsaw Man": [
+      "Me/What I like.md"
+    ],
+    "__entity:Person:Power": [
+      "Me/What I like.md"
+    ],
+    "__entity:Person:Makima": [
+      "Me/What I like.md"
+    ],
+    "__entity:Person:Denji": [
+      "Me/What I like.md"
+    ],
+    "__entity:Project:Black Clover": [
+      "Me/What I like.md"
+    ],
+    "__entity:Person:Asta": [
+      "Me/What I like.md"
+    ],
+    "__entity:Concept:Asta's Demon Swords": [
+      "Me/What I like.md"
+    ],
+    "__entity:Project:Mobile Suit Gundam: Iron-Blooded Orphans": [
+      "Me/What I like.md"
+    ],
+    "__entity:Person:Mika": [
+      "Me/What I like.md"
+    ],
+    "__entity:Hardware:Gundam Barbatos": [
+      "Me/What I like.md"
+    ],
+    "__entity:Hardware:Lupex Rex": [
+      "Me/What I like.md"
+    ],
+    "__entity:Project:Yu-Gi-Oh!": [
+      "Me/What I like.md"
+    ],
+    "__entity:Person:Yusaki Code Talker": [
+      "Me/What I like.md"
+    ],
+    "Me/Who Am I.md": [],
+    "__entity:Person:Mark Ihab": [
+      "Me/Who Am I.md"
+    ],
+    "__entity:Person:Koka (Karim Fady)": [
+      "Me/Who Am I.md"
+    ],
+    "__entity:Person:John Ihab": [
+      "Me/Who Am I.md"
+    ],
+    "__entity:Person:Youka": [
+      "Me/Who Am I.md"
+    ],
+    "__entity:Person:Ezzat": [
+      "Me/Who Am I.md"
+    ],
+    "__entity:Person:Skylen": [
+      "Me/Who Am I.md"
+    ],
+    "__entity:Person:Jojo": [
+      "Me/Who Am I.md"
+    ],
+    "__entity:Person:Angelica": [
+      "Me/Who Am I.md"
+    ],
+    "__entity:Person:Sylvia": [
+      "Me/Who Am I.md"
+    ],
+    "__entity:Location:United States": [
+      "Me/Who Am I.md"
+    ],
+    "__entity:Location:church": [
+      "Me/Who Am I.md"
+    ],
+    "__entity:Concept:Naruto": [
+      "Me/Who Am I.md"
+    ],
+    "__entity:Concept:Hunter x Hunter": [
+      "Me/Who Am I.md"
+    ],
+    "__entity:Concept:ENFJ-T": [
+      "Me/Who Am I.md"
+    ],
+    "__entity:Person:Omana": [
+      "Me/task.md"
+    ],
+    "Me/task.md": [],
+    "__entity:Hardware:Arduino": [
+      "Me/task.md"
+    ],
+    "__entity:Hardware:STM32": [
+      "Me/task.md"
+    ],
+    "__entity:Hardware:Tiva": [
+      "Me/task.md"
+    ],
+    "__entity:Technology:GitHub": [
+      "Me/task.md"
+    ],
+    "__entity:Technology:Ollama": [
+      "Me/task.md"
+    ],
+    "__entity:Concept:App": [
+      "Me/task.md"
+    ],
+    "__entity:Project:RTOS Project": [
+      "Me/task.md"
+    ],
+    "__entity:Project:Raspberry Pi Project": [
+      "Me/task.md"
+    ],
+    "__entity:Project:5edma": [
+      "Me/task.md"
+    ],
+    "__entity:Concept:Timeline": [
+      "Me/task.md"
+    ],
+    "__entity:Concept:Survey": [
+      "Me/task.md"
+    ],
+    "__entity:Concept:ERD": [
+      "Me/task.md"
+    ],
+    "__entity:Concept:Schema": [
+      "Me/task.md"
+    ],
+    "__entity:Concept:Implementation": [
+      "Me/task.md"
+    ],
+    "__entity:Concept:Website": [
+      "Me/task.md"
+    ],
+    "__entity:Project:El Treasure Hunt": [
+      "Me/task.md"
+    ],
+    "__entity:Project:Dars el Esbou3": [
+      "Me/task.md"
+    ],
+    "copilot/copilot-conversations/Advice_Needed_on_Maria@20260515_183916.md": [],
+    "__entity:Person:Me": [
+      "copilot/copilot-conversations/Growth_Journey_Reflection@20260324_192850.md",
+      "copilot/copilot-conversations/Opinion_on_Active_Note@20260405_003812.md",
+      "copilot/copilot-conversations/Seeking_Information,_Feeling_Fear@20260513_120038.md"
+    ],
+    "__entity:Person:Iriny": [
+      "copilot/copilot-conversations/Growth_Journey_Reflection@20260324_192850.md"
+    ],
+    "__entity:Project:My growth Journey": [
+      "copilot/copilot-conversations/Growth_Journey_Reflection@20260324_192850.md"
+    ],
+    "__entity:Technology:qwen3:8b|ollama": [
+      "copilot/copilot-conversations/Growth_Journey_Reflection@20260324_192850.md",
+      "copilot/copilot-conversations/I_Am_Spiraling_Again@20260421_115417.md",
+      "copilot/copilot-conversations/Organizing_Personal_Notes@20260516_135303.md",
+      "copilot/copilot-conversations/Quadratic_Equation_Solution@20260323_224544.md",
+      "copilot/copilot-conversations/Still_Guilty@20260326_032354.md",
+      "copilot/copilot-conversations/User_Asks_for_Opinion@20260525_150920.md",
+      "copilot/copilot-conversations/Your_Thoughts@20260323_172101.md",
+      "copilot/copilot-conversations/Your_Thoughts@20260422_210230.md",
+      "copilot/copilot-conversations/Your_Thoughts@20260525_151423.md"
+    ],
+    "__entity:Concept:I Am Spiraling Again": [
+      "copilot/copilot-conversations/I_Am_Spiraling_Again@20260421_115417.md"
+    ],
+    "copilot/copilot-conversations/I_Am_Spiraling_Again@20260421_115417.md": [],
+    "__entity:Concept:I am spiraling again part 2": [
+      "copilot/copilot-conversations/I_Am_Spiraling_Again@20260421_115417.md"
+    ],
+    "__entity:Project:Me/My growth Journey.md": [
+      "copilot/copilot-conversations/I_Am_Spiraling_Again@20260421_115417.md",
+      "copilot/copilot-conversations/Yearning_for_Humanity@20260326_191201.md",
+      "copilot/copilot-conversations/Your_Thoughts@20260323_172101.md"
+    ],
+    "copilot/copilot-conversations/Love_Without_Reply@20260323_183236.md": [],
+    "__entity:Concept:Love Without Reply": [
+      "copilot/copilot-conversations/Love_Without_Reply@20260323_183236.md"
+    ],
+    "__entity:Concept:Self-Reflection and Awareness": [
+      "copilot/copilot-conversations/Love_Without_Reply@20260323_183236.md"
+    ],
+    "__entity:Concept:Self-Dependence": [
+      "copilot/copilot-conversations/Love_Without_Reply@20260323_183236.md"
+    ],
+    "__entity:Concept:Therapist": [
+      "copilot/copilot-conversations/Love_Without_Reply@20260323_183236.md"
+    ],
+    "copilot/copilot-conversations/Opinion_on_Active_Note@20260405_003812.md": [],
+    "__entity:Project:The pass still haunts me": [
+      "copilot/copilot-conversations/Opinion_on_Active_Note@20260405_003812.md"
+    ],
+    "__entity:Technology:qwen3:8b": [
+      "copilot/copilot-conversations/Opinion_on_Active_Note@20260405_003812.md"
+    ],
+    "__entity:Technology:ollama": [
+      "copilot/copilot-conversations/Opinion_on_Active_Note@20260405_003812.md",
+      "copilot/copilot-conversations/Yearning_for_Humanity@20260326_191201.md"
+    ],
+    "__entity:Concept:Higher power": [
+      "copilot/copilot-conversations/Opinion_on_Active_Note@20260405_003812.md"
+    ],
+    "copilot/copilot-conversations/Organizing_Personal_Notes@20260516_135303.md": [],
+    "__entity:Concept:Organizing Personal Notes": [
+      "copilot/copilot-conversations/Organizing_Personal_Notes@20260516_135303.md"
+    ],
+    "__entity:Concept:Personal Notes": [
+      "copilot/copilot-conversations/Organizing_Personal_Notes@20260516_135303.md"
+    ],
+    "__entity:Concept:Poem and Its Intended Audience": [
+      "copilot/copilot-conversations/Poem_and_Its_Intended_Audience@20260529_150217.md"
+    ],
+    "__entity:Concept:I think you are perfect": [
+      "copilot/copilot-conversations/Poem_and_Its_Intended_Audience@20260529_150217.md"
+    ],
+    "__entity:Concept:My growth Journey": [
+      "copilot/copilot-conversations/Poem_and_Its_Intended_Audience@20260529_150217.md"
+    ],
+    "copilot/copilot-conversations/Quadratic_Equation_Solution@20260323_224544.md": [],
+    "__entity:Concept:Quadratic Equation Solution": [
+      "copilot/copilot-conversations/Quadratic_Equation_Solution@20260323_224544.md"
+    ],
+    "copilot/copilot-conversations/Read_Maria_the_Perfect@20260513_130650.md": [],
+    "__entity:Person:Mr. David": [
+      "copilot/copilot-conversations/Read_Maria_the_Perfect@20260513_130650.md"
+    ],
+    "__entity:Concept:5-4-3-2-1 sensory scan": [
+      "copilot/copilot-conversations/Seeking_Information,_Feeling_Fear@20260513_120038.md"
+    ],
+    "__entity:Concept:Box breathing": [
+      "copilot/copilot-conversations/Seeking_Information,_Feeling_Fear@20260513_120038.md"
+    ],
+    "__entity:Concept:Anchor phrase": [
+      "copilot/copilot-conversations/Seeking_Information,_Feeling_Fear@20260513_120038.md"
+    ],
+    "__entity:Concept:Grounding & Present‑Moment tools": [
+      "copilot/copilot-conversations/Seeking_Information,_Feeling_Fear@20260513_120038.md"
+    ],
+    "__entity:Concept:Evidence‑check": [
+      "copilot/copilot-conversations/Seeking_Information,_Feeling_Fear@20260513_120038.md"
+    ],
+    "__entity:Concept:Counter‑statement": [
+      "copilot/copilot-conversations/Seeking_Information,_Feeling_Fear@20260513_120038.md"
+    ],
+    "__entity:Concept:Future‑preview": [
+      "copilot/copilot-conversations/Seeking_Information,_Feeling_Fear@20260513_120038.md"
+    ],
+    "__entity:Concept:Engineering": [
+      "copilot/copilot-conversations/Seeking_Information,_Feeling_Fear@20260513_120038.md"
+    ],
+    "__entity:Concept:Humor": [
+      "copilot/copilot-conversations/Seeking_Information,_Feeling_Fear@20260513_120038.md"
+    ],
+    "__entity:Concept:Empathy": [
+      "copilot/copilot-conversations/Seeking_Information,_Feeling_Fear@20260513_120038.md"
+    ],
+    "copilot/copilot-conversations/Still_Guilty@20260326_032354.md": [],
+    "__entity:Concept:Still Guilty": [
+      "copilot/copilot-conversations/Still_Guilty@20260326_032354.md"
+    ],
+    "__entity:Technology:Obsidian": [
+      "copilot/copilot-conversations/User_Asks_for_Opinion@20260525_150920.md",
+      "copilot/memory/Recent Conversations.md"
+    ],
+    "__entity:Technology:Dataview plugin": [
+      "copilot/copilot-conversations/User_Asks_for_Opinion@20260525_150920.md"
+    ],
+    "__entity:Concept:Music Quotes": [
+      "copilot/copilot-conversations/User_Asks_for_Opinion@20260525_150920.md"
+    ],
+    "__entity:Project:Note: To Maria": [
+      "copilot/copilot-conversations/User_Asks_for_Opinion@20260525_150920.md"
+    ],
+    "__entity:Project:qwen3:8b": [
+      "copilot/copilot-conversations/Yearning_for_Humanity@20260326_191201.md"
+    ],
+    "__entity:Concept:Yearning for Humanity": [
+      "copilot/copilot-conversations/Yearning_for_Humanity@20260326_191201.md"
+    ],
+    "__entity:Project:Me/Quotes/Music Quotes.md": [
+      "copilot/copilot-conversations/Yearning_for_Humanity@20260326_191201.md"
+    ],
+    "__entity:Concept:perfect machine": [
+      "copilot/copilot-conversations/Yearning_for_Humanity@20260326_191201.md"
+    ],
+    "__entity:Project:Music Quotes": [
+      "copilot/copilot-conversations/Yearning_for_Humanity@20260326_191201.md"
+    ],
+    "copilot/copilot-conversations/Your_Thoughts@20260323_172101.md": [],
+    "__entity:Concept:Self-Awareness": [
+      "copilot/copilot-conversations/Your_Thoughts@20260323_172101.md"
+    ],
+    "__entity:Concept:Growth Mindset": [
+      "copilot/copilot-conversations/Your_Thoughts@20260323_172101.md"
+    ],
+    "__entity:Concept:Spiritual Connection": [
+      "copilot/copilot-conversations/Your_Thoughts@20260323_172101.md"
+    ],
+    "__entity:Concept:Emotional Resilience": [
+      "copilot/copilot-conversations/Your_Thoughts@20260323_172101.md"
+    ],
+    "__entity:Concept:Kindness and Love": [
+      "copilot/copilot-conversations/Your_Thoughts@20260323_172101.md"
+    ],
+    "__entity:Concept:Trust and Security": [
+      "copilot/copilot-conversations/Your_Thoughts@20260323_172101.md"
+    ],
+    "__entity:Concept:Small Wins": [
+      "copilot/copilot-conversations/Your_Thoughts@20260323_172101.md"
+    ],
+    "copilot/copilot-conversations/Your_Thoughts@20260422_210230.md": [],
+    "__entity:Project:I am the arrogant": [
+      "copilot/copilot-conversations/Your_Thoughts@20260422_210230.md"
+    ],
+    "__entity:Concept:Father": [
+      "copilot/copilot-conversations/Your_Thoughts@20260422_210230.md"
+    ],
+    "__entity:Concept:Your Thoughts": [
+      "copilot/copilot-conversations/Your_Thoughts@20260422_210230.md"
+    ],
+    "copilot/copilot-conversations/Your_Thoughts@20260525_151423.md": [],
+    "__entity:Concept:copilot-conversation": [
+      "copilot/copilot-conversations/Your_Thoughts@20260525_151423.md"
+    ],
+    "__entity:Technology:Copilot": [
+      "copilot/copilot-custom-prompts/Emojify.md",
+      "copilot/copilot-custom-prompts/Explain like I am 5.md"
+    ],
+    "copilot/copilot-custom-prompts/Emojify.md": [],
+    "copilot/copilot-custom-prompts/Explain like I am 5.md": [],
+    "__entity:Concept:copilot-command-context-menu-enabled": [
+      "copilot/copilot-custom-prompts/Generate glossary.md",
+      "copilot/copilot-custom-prompts/Generate table of contents.md",
+      "copilot/copilot-custom-prompts/Rewrite as tweet thread.md"
+    ],
+    "copilot/copilot-custom-prompts/Generate glossary.md": [],
+    "__entity:Concept:copilot-command-slash-enabled": [
+      "copilot/copilot-custom-prompts/Generate glossary.md",
+      "copilot/copilot-custom-prompts/Generate table of contents.md",
+      "copilot/copilot-custom-prompts/Rewrite as tweet thread.md"
+    ],
+    "__entity:Concept:copilot-command-context-menu-order": [
+      "copilot/copilot-custom-prompts/Generate glossary.md",
+      "copilot/copilot-custom-prompts/Generate table of contents.md",
+      "copilot/copilot-custom-prompts/Rewrite as tweet thread.md"
+    ],
+    "__entity:Concept:copilot-command-model-key": [
+      "copilot/copilot-custom-prompts/Generate glossary.md",
+      "copilot/copilot-custom-prompts/Generate table of contents.md",
+      "copilot/copilot-custom-prompts/Rewrite as tweet thread.md"
+    ],
+    "__entity:Concept:copilot-command-last-used": [
+      "copilot/copilot-custom-prompts/Generate glossary.md",
+      "copilot/copilot-custom-prompts/Generate table of contents.md",
+      "copilot/copilot-custom-prompts/Rewrite as tweet thread.md"
+    ],
+    "__entity:Project:copilot": [
+      "copilot/copilot-custom-prompts/Generate table of contents.md"
+    ],
+    "copilot/copilot-custom-prompts/Generate table of contents.md": [],
+    "__entity:Technology:Copilot Commands": [
+      "copilot/copilot-custom-prompts/Make longer.md"
+    ],
+    "copilot/copilot-custom-prompts/Make longer.md": [],
+    "copilot/copilot-custom-prompts/Rewrite as tweet thread.md": [],
+    "__entity:Concept:GitHub Copilot": [
+      "copilot/copilot-custom-prompts/Rewrite as tweet thread.md"
+    ],
+    "__entity:Person:Maria the Perfect": [
+      "copilot/memory/Recent Conversations.md"
+    ],
+    "copilot/memory/Recent Conversations.md": [],
+    "__entity:Technology:Dataview": [
+      "copilot/memory/Recent Conversations.md"
+    ],
+    "__entity:Concept:Love Letter": [
+      "copilot/memory/Recent Conversations.md"
+    ],
+    "__entity:Concept:Harry Potter": [
+      "management/Lina/Lina birthday gift ideas.md"
+    ],
+    "management/Lina/Lina birthday gift ideas.md": [],
+    "__entity:Concept:Slytherin": [
+      "management/Lina/Lina birthday gift ideas.md"
+    ],
+    "__entity:Concept:Ferrero roché": [
+      "management/Lina/Lina birthday gift ideas.md"
+    ],
+    "__entity:Concept:Lindt": [
+      "management/Lina/Lina birthday gift ideas.md"
+    ],
+    "__entity:Location:This shop": [
+      "management/Lina/Lina birthday gift ideas.md"
+    ],
+    "__entity:Concept:Resin craft": [
+      "management/Lina/Lina birthday gift ideas.md"
+    ],
+    "management/Lina/Lina favourite stuff.md": [],
+    "__entity:Person:Hermonie": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "__entity:Person:Annabeth": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "__entity:Person:Rory Gilmore": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "__entity:Person:Laurie": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "__entity:Person:Jo": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "__entity:Person:Timothee Chalamet": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "__entity:Person:Emma Watson": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "__entity:Person:Lily J. Collins": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "__entity:Concept:Breshka": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "__entity:Location:T Smash": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "__entity:Concept:Baby Breath": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "__entity:Concept:Foosball": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "__entity:Person:Lana Del Rey": [
+      "management/Lina/Lina favourite stuff.md",
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Person:Conan Gray": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "__entity:Person:Olivia Rodrigo": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "__entity:Concept:Pinkberry": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "__entity:Concept:Ferrero Rocher": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "__entity:Concept:Lindt Lindor": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "__entity:Concept:Marvelous Creations": [
+      "management/Lina/Lina favourite stuff.md"
+    ],
+    "management/Lina/Love letters/First love letter 29-12-2024.md": [],
+    "__entity:Person:lili": [
+      "management/Lina/Love letters/Lina's love letter 8-12-2024.md"
+    ],
+    "management/Lina/Love letters/Lina's love letter 8-12-2024.md": [],
+    "__entity:Person:linky": [
+      "management/Lina/Love letters/Lina's love letter 8-12-2024.md"
+    ],
+    "__entity:Person:lina": [
+      "management/Lina/Love letters/Lina's love letter 8-12-2024.md"
+    ],
+    "management/Lina/Love letters/Second love letter 2-12-2024.md": [],
+    "__entity:Concept:love_letter": [
+      "management/Lina/Love letters/Second love letter 2-12-2024.md"
+    ],
+    "management/Lina/Love letters/Third love letter 12-2-25.md": [],
+    "__entity:Person:Linky44": [
+      "management/Lina/Love letters/Third love letter 12-2-25.md"
+    ],
+    "management/Lina/Notes/You are the first person i miss.md": [],
+    "__entity:Concept:Rose": [
+      "management/Lina/Notes/You are the first person i miss.md"
+    ],
+    "__entity:Person:Shawn Mendes": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Person:Alec Benjamin": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:Maroon 5": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:Imagine Dragons": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:Arctic Monkeys": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:Bring Me the Horizon": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:The Weeknd": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:Maneskin": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:OneRepublic": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:Five Seconds of Summer": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:The Neighborhood": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:Ours": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:When the Darkness Comes": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:Carnival of Rust": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:Fallen Angel": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:Missio": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:NF": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Concept:Mona Lisa": [
+      "management/Lina/Quotes/Favourite phares and expressions.md"
+    ],
+    "__entity:Location:Heaven": [
+      "management/Lina/Quotes/Lana Del Ray.md"
+    ],
+    "management/Lina/Quotes/Lana Del Ray.md": [],
+    "__entity:Concept:time": [
+      "management/Lina/Quotes/Lana Del Ray.md"
+    ],
+    "__entity:Concept:riptide": [
+      "management/Lina/Quotes/Lana Del Ray.md"
+    ],
+    "__entity:Concept:heart": [
+      "management/Lina/Quotes/One Direction.md"
+    ],
+    "management/Lina/Quotes/One Direction.md": [],
+    "__entity:Concept:eyes": [
+      "management/Lina/Quotes/One Direction.md"
+    ],
+    "__entity:Concept:world": [
+      "management/Lina/Quotes/One Direction.md"
+    ],
+    "__entity:Concept:kiss": [
+      "management/Lina/Quotes/One Direction.md"
+    ],
+    "__entity:Location:Southern California": [
+      "management/Lina/Quotes/Others.md"
+    ],
+    "management/Lina/Quotes/Others.md": [],
+    "__entity:Concept:Heaven": [
+      "management/Lina/Quotes/Others.md"
+    ],
+    "__entity:Concept:gravity": [
+      "management/Lina/Quotes/Others.md"
+    ],
+    "__entity:Concept:oxygen": [
+      "management/Lina/Quotes/Others.md"
+    ],
+    "management/Lina/Quotes/Taylor swift.md": [],
+    "__entity:Concept:Quotes": [
+      "management/Lina/Quotes/Taylor swift.md"
+    ],
+    "management/Lina/Song.md": [],
+    "__entity:Concept:Super Nova": [
+      "management/Lina/Song.md"
+    ],
+    "Subjects/Maria/Maria.md": [
+      "Me/Friends/Maria.md"
+    ]
   },
   "title_map": {
     "all about thinking": "Courses/Data science Course/All about thinking.md",

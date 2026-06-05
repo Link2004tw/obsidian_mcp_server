@@ -1,22 +1,20 @@
-"""Orchestrator — runs Phase 1 (chunking/embedding) then Phase 2 (entity extraction)."""
+"""Orchestrator — runs Phase 1 (chunking/embedding) then Phase 2 (entity extraction/summary)."""
 
 import os
 import sys
 import threading
 import time
 
-from . import _index_utils as utils
-from . import chunker, config, extractor, graph_store, llm_client, obsidian_client
-from ._index_utils import (
-    _extract_frontmatter_fields,
-    _extract_tags,
-    _links_to_meta,
-    _sanitize,
-    _tags_to_meta,
-    _word_count,
-    chunk_text,
-    chunk_text_heading_aware,
-    split_by_headings,
+from . import (
+    _index_utils as utils,
+)
+from . import (
+    chunker,
+    config,
+    extract_entities_pipeline,
+    graph_store,
+    obsidian_client,
+    summarize_pipeline,
 )
 from .frontmatter import add_tags as fm_add_tags
 from .logger import get_logger, log_error
@@ -39,21 +37,30 @@ def add_tags_to_note(path: str, tags: list[str]) -> None:
 
 
 def run_index():
-    """Full index pipeline: Phase 1 (chunk+embed) then Phase 2 (extract entities)."""
+    """Full index pipeline: Phase 1 (chunk+embed) then Phase 2 (entity extraction + summaries)."""
     start = time.time()
 
     # Phase 1: chunk + embed (nomic) — no LLM chat calls
     chunker.run_chunking()
 
-    # Phase 2: entity extraction + summary (Qwen8b) — skipped if flag is set
-    if not SKIP_ENTITIES and not SKIP_SUMMARIES:
-        log.info("Starting Phase 2 — entity extraction + summary generation")
-        extractor.run_extraction(force=False, skip_cached=True)
-    elif SKIP_ENTITIES and not SKIP_SUMMARIES:
-        log.info("Phase 2: entities skipped, generating summaries only")
-        extractor.run_extraction(force=False, skip_cached=True)
+    # Phase 2a: entity extraction
+    if not SKIP_ENTITIES:
+        log.info("Starting entity extraction phase")
+        extract_entities_pipeline.run_entity_extraction(force=False, skip_cached=True)
     else:
-        log.info("Phase 2 skipped (SKIP_ENTITIES set)")
+        log.info("Entity extraction skipped (SKIP_ENTITIES set)")
+
+    # 30s GPU cooldown between phases when both run
+    if not SKIP_ENTITIES and not SKIP_SUMMARIES:
+        log.info("Cooling GPU for 30s before summary generation...")
+        time.sleep(30)
+
+    # Phase 2b: summary generation
+    if not SKIP_SUMMARIES:
+        log.info("Starting summary generation phase")
+        summarize_pipeline.run_summary_generation(force=False, skip_cached=True)
+    else:
+        log.info("Summary generation skipped (SKIP_SUMMARIES set)")
 
     log.info(f"Total elapsed: {time.time() - start:.1f}s")
 
@@ -121,7 +128,7 @@ def watch():
                         utils.save_hash_map(hash_map)
                         # Phase 2: extract entities (if not skipped)
                         if not SKIP_ENTITIES:
-                            extractor.extract_note(path)
+                            extract_entities_pipeline.extract_note_entities(path)
                     elif action == "delete":
                         chunker.delete_note(path)
                     elif action.startswith("rename:"):

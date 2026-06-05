@@ -367,6 +367,65 @@ class EntityStore:
             "mention_count": len(primary_rec["mentions"]),
         }
 
+    def list_entities(self, entity_type: str | None = None, n: int = 1000) -> list[dict]:
+        """List all entities, optionally filtered by entity type.
+
+        Returns sorted by mention count descending.
+        """
+        results = []
+        for record in self._data.values():
+            if entity_type and record["type"] != entity_type:
+                continue
+            results.append({
+                "entity_name": record["canonical"],
+                "entity_type": record["type"],
+                "mention_count": len(record["mentions"]),
+            })
+        results.sort(key=lambda r: r["mention_count"], reverse=True)
+        return results[:n]
+
+    def add_manual_entity(self, name: str, entity_type: str, aliases: list[str] | None = None) -> dict:
+        """Manually add an entity to the index without requiring a note mention.
+
+        Thread-safe. Persists immediately.
+
+        Args:
+            name: canonical entity name (e.g. ``"ESP32"``).
+            entity_type: type from ``_ENTITY_TYPES`` (defaults to ``"Concept"``).
+            aliases: optional list of alternative names.
+
+        Returns:
+            The created/updated entity record dict.
+        """
+        if entity_type not in _ENTITY_TYPES:
+            entity_type = "Concept"
+        key = _normalize(name)
+        with self._lock:
+            record = self._data.get(key)
+            if record is None:
+                record = {
+                    "canonical": name,
+                    "type": entity_type,
+                    "aliases": [],
+                    "mentions": [],
+                }
+                self._data[key] = record
+            else:
+                record["type"] = entity_type
+            if aliases:
+                for alias in aliases:
+                    alias_str = str(alias).strip()
+                    if alias_str and alias_str not in record["aliases"]:
+                        record["aliases"].append(alias_str)
+                        self._register_alias(key, alias_str)
+        self.save()
+        return {
+            "entity_name": record["canonical"],
+            "entity_type": record["type"],
+            "aliases": list(record["aliases"]),
+            "mention_count": len(record["mentions"]),
+        }
+
     # ── Rebuild ──────────────────────────────────────────────────────
 
     def clear(self) -> None:
@@ -601,3 +660,11 @@ def add_timeline_entry(entity_name: str, date: str, event: str,
 def get_timeline(name: str, date_from: str | None = None,
                  date_to: str | None = None) -> list[dict] | None:
     return _get_store().get_timeline(name, date_from=date_from, date_to=date_to)
+
+
+def list_entities(entity_type: str | None = None, n: int = 1000) -> list[dict]:
+    return _get_store().list_entities(entity_type=entity_type, n=n)
+
+
+def add_manual_entity(name: str, entity_type: str, aliases: list[str] | None = None) -> dict:
+    return _get_store().add_manual_entity(name, entity_type, aliases=aliases)

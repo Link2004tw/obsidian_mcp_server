@@ -99,7 +99,7 @@ ConnectionRefusedError: [Errno 111] Connection refused
 
 **Fix:**
 1. Stop the indexer
-2. Delete the `./chroma_db` directory
+2. Delete the `data/chroma_db` directory
 3. Run the indexer again to rebuild from scratch
 
 ---
@@ -110,9 +110,9 @@ ConnectionRefusedError: [Errno 111] Connection refused
 
 **Common causes:**
 
-1. **LLM timeout** — Entity extraction needs `qwen3:8b` (or the configured chat model). If the model is slow, the request may time out. The system retries 3× with exponential backoff (1s, 2s, 4s).
+1. **LLM timeout** — Entity extraction needs `qwen3:4b` (or the configured chat model). If the model is slow, the request may time out. The system retries 3× with exponential backoff (1s, 2s, 4s).
 
-2. **Model not pulled** — Pull the chat model: `ollama pull qwen3:8b`
+2. **Model not pulled** — Pull the chat model: `ollama pull qwen3:4b`
 
 3. **Invalid LLM response** — If the LLM returns malformed JSON, the entity is skipped with a warning log. The note is still indexed without entities.
 
@@ -128,7 +128,7 @@ ConnectionRefusedError: [Errno 111] Connection refused
 
 1. **LLM timeout** — Same retry mechanism as entity extraction (3×, exponential backoff, 1s/2s/4s).
 
-2. **Model not pulled** — Pull the chat model: `ollama pull qwen3:8b`
+2. **Model not pulled** — Pull the chat model: `ollama pull qwen3:4b`
 
 **Fix:** Check `logs/indexer.log` for summary errors. Use `--skip-summaries` to bypass.
 
@@ -152,7 +152,7 @@ ConnectionRefusedError: [Errno 111] Connection refused
 
 **Common causes:**
 
-1. **Chat model not pulled** — Pull the chat model: `ollama pull qwen3:8b`
+1. **Chat model not pulled** — Pull the chat model: `ollama pull qwen3:4b`
 
 2. **LLM response not valid JSON** — The `tag_notes` tool expects JSON. If the LLM returns malformed JSON, the tool tries to extract it with regex.
 
@@ -167,7 +167,9 @@ ConnectionRefusedError: [Errno 111] Connection refused
 All indexing errors are logged to `logs/indexer.log` in the project root:
 
 ```bash
-cat indexer.log
+# PowerShell
+Get-Content logs/indexer.log
+# or: type logs/indexer.log
 ```
 
 Each entry includes a timestamp, the note path, word count, and error message.

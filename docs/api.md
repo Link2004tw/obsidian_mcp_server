@@ -10,16 +10,28 @@ obsidian_port: int          # OBSIDIAN_PORT, default 27123
 obsidian_api_key: str       # OBSIDIAN_API_KEY, required
 ollama_base_url: str        # OLLAMA_BASE_URL, default "http://localhost:11434"
 ollama_embed_model: str     # OLLAMA_EMBED_MODEL, default "nomic-embed-text"
-ollama_chat_model: str      # OLLAMA_CHAT_MODEL, default "qwen3:8b"
+ollama_chat_model: str      # OLLAMA_CHAT_MODEL, default "qwen3:4b"
 chroma_path: str            # CHROMA_PATH, default "data/chroma_db"
-vault_path: str | None      # VAULT_PATH (required for file watcher)
-data_dir: str               # Data storage root, default "data"
-EXCLUDE_PATTERNS: list[str] # Hardcoded exclusion patterns
+vault_path: str             # VAULT_PATH (required for file watcher), default ""
+data_dir: str               # DATA_DIR, default "data"
+EXCLUDE_PATTERNS: list[str] # Exclusion patterns (includes ".github")
 chunk_size: int             # Words per chunk, default 500
 chunk_overlap: int          # Word overlap between chunks, default 100
-read_workers: int           # READ_WORKERS, default 6 (parallel note readers)
-llm_chat_concurrency: int   # LLM_CHAT_CONCURRENCY, default 2 (max concurrent LLM calls)
-expand_cache_ttl: int       # EXPAND_CACHE_TTL, default 3600 (seconds, TTL for query expansion cache)
+read_workers: int           # READ_WORKERS, default 2 (parallel note readers)
+llm_chat_concurrency: int   # LLM_CHAT_CONCURRENCY, default 1 (max concurrent LLM calls)
+embed_worker_floor: int     # EMBED_WORKER_FLOOR, default 1
+embed_worker_ceil: int      # EMBED_WORKER_CEIL, default 2
+index_batch_size: int       # INDEX_BATCH_SIZE, default 50
+llm_call_delay: float       # LLM_CALL_DELAY, default 0.5
+llm_call_hard_timeout: int  # LLM_CALL_HARD_TIMEOUT, default 30
+gpu_temp_limit: int         # GPU_TEMP_LIMIT, default 85
+gpu_vram_limit: int         # GPU_VRAM_LIMIT, default 80
+disk_temp_limit: int        # DISK_TEMP_LIMIT, default 80
+disk_temp_check_interval: int # DISK_TEMP_CHECK_INTERVAL, default 30
+expand_cache_ttl: int       # EXPAND_CACHE_TTL, default 3600
+entity_aliases_file: str    # ENTITY_ALIASES_FILE, default ""
+todo_file: str              # TODO_FILE, default "todos.md"
+ranking_weights: dict       # RANKING_SEMANTIC/ENTITY/GRAPH/KEYWORD, defaults 0.40/0.30/0.20/0.10
 ```
 
 ---
@@ -301,20 +313,14 @@ results = chroma_store.search_by_tags(["python", "ml"], n=5)
 
 ### Constants & Flags
 
-```python
-SKIP_MIN_TOKENS = 20      # Notes under this word count are skipped
-CHUNK_SIZE = 500           # Words per chunk
-CHUNK_OVERLAP = 100        # Word overlap between chunks
-SKIP_ENTITIES = False      # Set True to skip entity extraction
-SKIP_SUMMARIES = False     # Set True to skip summary generation
-```
+`chunk_size`, `chunk_overlap`, and `skip_min_tokens` are defined in `config.py` (defaults: 500, 100, 20). `SKIP_ENTITIES` and `SKIP_SUMMARIES` are module-level flags in `indexer.py`:
 
 ### `chunk_text(text: str, size: int = 500, overlap: int = 100) -> list[str]`
 
 Splits text into overlapping word-based chunks.
 
 ```python
-from obsidian_ai.indexer import chunk_text
+from obsidian_ai._index_utils import chunk_text
 chunks = chunk_text("word " * 1200, size=500, overlap=100)
 # ["word word ... (500 words)", "word word ... (500 words)", "word word ... (300 words)"]
 ```
@@ -332,9 +338,9 @@ Heading-aware chunking. Splits by headings first, then chunks large sections. Re
 Main indexing pipeline. Fetches all notes, chunks them, extracts entities, generates summaries, embeds, and stores in ChromaDB. Prints summary stats and logs errors to `indexer.log`.
 
 **Optimizations:**
-- Notes are read in parallel (``READ_WORKERS`` workers, default 6)
+- Notes are read in parallel (``READ_WORKERS`` workers, default 2)
 - Entity extraction and summary generation use a single combined LLM call per note
-- LLM chat calls are limited to ``LLM_CHAT_CONCURRENCY`` concurrent calls (default 2)
+- LLM chat calls are limited to ``LLM_CHAT_CONCURRENCY`` concurrent calls (default 1)
 - All chunks of a note are embedded in a single Ollama ``/api/embed`` batch call
 - Per-note wiki-links are cached during graph update and reused in indexing
 - ``delete_by_path`` is skipped for first-time notes
@@ -747,13 +753,13 @@ Normalize a wiki-link target: strips display text after `|`, strips section anch
 
 ## mcp_server.py
 
-FastMCP server exposing **67 vault tools**. Tool implementations are organized in `tools/` submodules (`search.py`, `notes.py`, `graph.py`, `todos.py`, `misc.py`) and registered via `register_all(mcp)`. All path parameters are auto-normalized (absolute or vault-relative accepted). Run with `python -m obsidian_ai.mcp_server`. See [MCP Server](mcp_server.md) for detailed tool documentation.
+FastMCP server exposing **70 vault tools**. Tool implementations are organized in `tools/` submodules (`search.py`, `notes.py`, `graph.py`, `todos.py`, `misc.py`) and registered via `register_all(mcp)`. All path parameters are auto-normalized (absolute or vault-relative accepted). Backed by dedicated modules: `ranker.py` for unified ranking, `entity_relations.py` for entity relationships, `dashboard.py` for HTML output, and `todos.py` for the todo engine. Run with `python -m obsidian_ai.mcp_server`. See [MCP Server](mcp_server.md) for detailed tool documentation.
 
 ### Tools by category
 
 **Search & Retrieval:** `search_notes`, `batch_search`, `composite_search`, `retrieve_notes`, `find_duplicate_notes`, `search_by_tags`, `get_subject`, `search_entities`
 
-**Read & Write:** `read_note`, `write_note`, `list_all_notes`, `list_folder`, `list_folder_deep`, `read_note_by_title`
+**Read & Write:** `read_note`, `write_note`, `list_all_notes`, `list_folder`, `list_folder_deep`, `read_note_by_title`, `add_note_to_subject`
 
 **Tags:** `add_tags`, `remove_tags`, `set_tags`, `batch_tag_notes`, `tag_notes`
 
@@ -761,7 +767,7 @@ FastMCP server exposing **67 vault tools**. Tool implementations are organized i
 
 **LLM:** `ask_vault`, `ask_agent`, `summarize_topic`, `tag_notes`
 
-**Entities:** `search_entities`, `get_note_entities`, `get_entity_types`, `get_entity_aliases`, `merge_entities`, `entity_timeline`, `related_entities`, `set_ranking_weights`, `get_ranking_weights`
+**Entities:** `search_entities`, `get_note_entities`, `get_entity_types`, `get_entity_aliases`, `list_entities`, `add_entity`, `merge_entities`, `entity_timeline`, `related_entities`, `set_ranking_weights`, `get_ranking_weights`
 
 **Clustering:** `get_clusters`
 
@@ -770,6 +776,293 @@ FastMCP server exposing **67 vault tools**. Tool implementations are organized i
 **Index:** `sync_index`, `get_index_stats`, `switch_embedding_model`
 
 **Todos:** `get_todos`, `add_todo`, `complete_todo`, `update_todo`, `delete_todo`, `sync_todos`, `get_todo_stats`, `ensure_todo_file`, `get_todos_by_priority`, `add_todo_from_natural_language`, `suggest_task_priority`, `suggest_due_date`, `suggest_task_splitting`, `get_overdue_summary`, `estimate_completion_date`, `get_todos_for_note`, `get_notes_for_todo`, `link_todo_to_notes`, `ask_vault_about_todo`, `ask_vault_about_todos`
+
+---
+
+## chunker.py
+
+Phase 1 of the indexing pipeline. Handles chunking, embedding, and ChromaDB storage — no LLM chat calls.
+
+### `prepare_note_data(path, content=None, ...) -> dict | None`
+
+Prepare note data for embedding. Chunks text (heading-aware), computes content hash, extracts wiki-links and tags. Returns a dict with `chunks`, `embeddings`, `metadata`, or `None` if skipped (under 20 words, excluded pattern, unchanged delta).
+
+```python
+from obsidian_ai.chunker import prepare_note_data
+data = prepare_note_data("Notes/topic.md")
+```
+
+### `chunk_and_embed(path, content) -> list[dict]`
+
+Full chunk → embed → upsert pipeline for a single note. Calls `prepare_note_data()` then embeds chunks via `llm_client.batch_embed()` and upserts to ChromaDB.
+
+### `run_batch_phase() -> int`
+
+Process all notes in the vault: fetches paths, prepares data in parallel, batch-embeds, stores in ChromaDB. Returns count of notes processed.
+
+---
+
+## ranker.py
+
+Unified ranking pipeline combining four retrieval signals: semantic, entity, graph, keyword.
+
+### Constants
+
+```python
+DEFAULT_WEIGHTS = {"semantic": 0.40, "entity": 0.30, "graph": 0.20, "keyword": 0.10}
+INTENT_WEIGHTS = {
+    "entity": {"semantic": 0.25, "entity": 0.55, "graph": 0.15, "keyword": 0.05},
+    "keyword": {"semantic": 0.20, "entity": 0.10, "graph": 0.10, "keyword": 0.60},
+    "graph": {"semantic": 0.20, "entity": 0.20, "graph": 0.50, "keyword": 0.10},
+}
+```
+
+### `Ranker`
+
+```python
+from obsidian_ai.ranker import Ranker
+ranker = Ranker()
+```
+
+### `search(query_embedding, notes, ...) -> list[dict]`
+
+Rank notes by combined score across all four signals. Accepts pre-computed semantic distances, entity match scores, graph proximity scores, and keyword BM25 scores.
+
+**Parameters:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `query_embedding` | `list[float]` | Embedding vector for the query |
+| `notes` | `list[dict]` | Candidate notes with text content |
+| `top_k` | `int` | Max results (default 10) |
+| `weights` | `dict` | Custom weight overrides |
+| `keyword_scores` | `dict[str, float]` | BM25 scores keyed by path |
+
+### `detect_intent(query: str) -> str`
+
+Detect query intent: `"entity"`, `"keyword"`, or `"graph"`. Used for automatic weight switching.
+
+### `get_current_weights() -> dict`
+
+Return current active weights.
+
+### `set_weights(entity_weight=None, keyword_weight=None, graph_weight=None) -> dict`
+
+Update weights at runtime.
+
+---
+
+## entity_relations.py
+
+Directed entity-to-entity relationship graph.
+
+### `add_relationship(source, target, rel_type, confidence=1.0)`
+
+Add a relationship triple. Deduplicates by casefolded names.
+
+```python
+from obsidian_ai import entity_relations
+entity_relations.add_relationship("Python", "Django", "uses", 0.9)
+```
+
+### `get_related(entity_name, rel_types=None) -> list[dict]`
+
+Return all entities related to a given entity.
+
+### `get_relationships_for_note(path) -> list[dict]`
+
+Return all relationships involving entities found in a specific note.
+
+### `get_stats() -> dict`
+
+Return relationship graph statistics (total entities, total triples, types).
+
+### `rebuild()`
+
+Rebuild the relationship graph from entity mentions across all notes.
+
+### `clear()`
+
+Clear all relationships.
+
+### `to_dict() / from_dict(data)`
+
+Serialize/deserialize the relationship graph.
+
+---
+
+## dashboard.py
+
+Standalone HTML dashboard for the knowledge graph. No external dependencies beyond the project's own stack.
+
+### `gather_data() -> dict`
+
+Collect data from all available sources:
+- ChromaDB: total chunks, notes, embedding model info
+- Graph store: nodes, edges, communities, orphans
+- Entity store: entity counts, types
+- Todo store: todo counts by status
+- LLM client: cache stats
+
+### `generate(data=None) -> str`
+
+Produce a complete self-contained HTML page. Embeds all data as JSON in a `<script>` tag with interactive D3.js-style visualizations.
+
+```python
+from obsidian_ai.dashboard import generate, gather_data
+html = generate(gather_data())
+with open("dashboard.html", "w") as f:
+    f.write(html)
+```
+
+### `serve(host="localhost", port=8765)`
+
+Start a live HTTP server that serves the dashboard on each request.
+
+```python
+from obsidian_ai.dashboard import serve
+serve(host="0.0.0.0", port=8765)
+```
+
+---
+
+## entity_extractor.py
+
+Phase 2a of indexing: extracts entities from note content via LLM.
+
+### `extract_and_store(path, content_hash, sanitized) -> list[dict]`
+
+Extract entities from a single note. Checks entity cache first; skips LLM call on cache hit. Returns list of `{name, type, confidence}` dicts.
+
+```python
+from obsidian_ai.entity_extractor import extract_and_store
+entities = extract_and_store("Notes/topic.md", "abc123", "sanitized text...")
+```
+
+### `process_all_prepared(*, force=False) -> int`
+
+Run entity extraction on all prepared (chunked but not yet entity-enriched) notes. Returns count of notes processed.
+
+---
+
+## summarizer.py
+
+Phase 2b of indexing: generates note summaries via LLM.
+
+### `summarize_and_store(path, content_hash, sanitized) -> str`
+
+Generate a 2-3 sentence summary for a note. Checks summary cache first. Returns summary string (empty if failed).
+
+```python
+from obsidian_ai.summarizer import summarize_and_store
+summary = summarize_and_store("Notes/topic.md", "abc123", "sanitized text...")
+```
+
+### `process_all_prepared(*, force=False) -> int`
+
+Run summarization on all prepared notes. Returns count of notes processed.
+
+---
+
+## todos.py
+
+Todo implementation layer. Provides the core logic consumed by `tools/todos.py` (20 MCP tools).
+
+### `get_todos(project="", status="", overdue=False, blocked=False, search="") -> list[dict]`
+
+List todos from `todos.md` with optional filters.
+
+### `add_todo(project, task, due="", priority="", tags=None) -> dict`
+
+Add a new todo. Creates project section if missing.
+
+### `complete_todo(todo_id) -> dict`
+
+Mark a todo as completed by ID.
+
+### `update_todo(todo_id, ...) -> dict`
+
+Update one or more fields. Only provided fields change.
+
+### `delete_todo(todo_id) -> dict`
+
+Delete a todo by ID.
+
+### `sync_todos() -> dict`
+
+Recalculate project/status counts in `todos.md` frontmatter.
+
+### `ensure_todos_file_exists() -> str`
+
+Create a default `todos.md` if missing.
+
+### `get_todo_stats() -> dict`
+
+Aggregated statistics (total, completed, pending, overdue, per-project, per-priority).
+
+### `add_todo_from_natural_language(text) -> dict`
+
+Parse plain text via LLM and create a structured todo.
+
+### `suggest_task_priority(task, context="") -> str`
+
+LLM-suggested priority: `"high"`, `"medium"`, or `"low"`.
+
+### `suggest_due_date(task, context="") -> str`
+
+LLM-suggested due date (YYYY-MM-DD).
+
+### `suggest_task_splitting(task) -> str`
+
+LLM-suggested subtask breakdown.
+
+### `get_overdue_summary() -> list[dict]`
+
+All overdue pending todos with days past due.
+
+### `estimate_completion_date(project) -> str`
+
+Estimate completion date based on current progress.
+
+### `link_todo_to_notes(todo_id, note_paths) -> dict`
+
+Link a todo to one or more vault notes.
+
+### `get_todos_for_note(note_path) -> list[dict]`
+
+Find todos linked to a specific note.
+
+### `get_notes_for_todo(todo_id) -> list[str]`
+
+Find notes linked to a specific todo.
+
+---
+
+## eval.py
+
+Retrieval evaluation benchmark.
+
+### `load_benchmark(path=None) -> list[dict]`
+
+Load query/judgment pairs from a JSON file. Default path: `data/eval_queries.json`.
+
+### `format_results(results) -> str`
+
+Format evaluation results (nDCG, recall) as a table string.
+
+### `run_eval(queries, top_k=5, ...) -> list[dict]`
+
+Run evaluation with configurable strategies:
+- `use_graph` — enable graph traversal
+- `use_summaries` — enable summary-first retrieval
+- `expand_entities` — enable entity expansion
+- `use_community_boost` — enable community-aware boost
+
+```python
+from obsidian_ai.eval import load_benchmark, run_eval, format_results
+queries = load_benchmark()
+results = run_eval(queries, top_k=5, use_graph=True)
+print(format_results(results))
+```
 
 ---
 

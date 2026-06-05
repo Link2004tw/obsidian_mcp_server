@@ -43,8 +43,13 @@ data/
 # Graphify output
 graphify-out/
 
-# Claude local settings
-.claude/settings.local.json
+# Generated artifacts
+dashboard.html
+
+# Claude / opencode local settings
+.claude/
+.opencode/
+.openclaude/
 
 # Obsidian plugin (if copied locally)
 .obsidian/

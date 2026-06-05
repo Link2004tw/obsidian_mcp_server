@@ -305,6 +305,11 @@ class GraphStore:
             self._adj[note_path] = set()
         self._dirty = True
 
+    def has_entity_edge(self, entity_type: str, entity_name: str, note_path: str) -> bool:
+        """Check if an entity→note edge already exists."""
+        eid = self._entity_node_id(entity_type, entity_name)
+        return note_path in self._adj.get(eid, set())
+
     def remove_entity_edges(self, entity_type: str, entity_name: str) -> None:
         """Remove all edges for a specific entity node."""
         eid = self._entity_node_id(entity_type, entity_name)
@@ -609,6 +614,10 @@ def add_edge(source: str, target: str) -> None:
 
 def add_entity_edge(entity_type: str, entity_name: str, note_path: str) -> None:
     _get_store().add_entity_edge(entity_type, entity_name, note_path)
+
+
+def has_entity_edge(entity_type: str, entity_name: str, note_path: str) -> bool:
+    return _get_store().has_entity_edge(entity_type, entity_name, note_path)
 
 
 def rename_node(old: str, new: str) -> None:
