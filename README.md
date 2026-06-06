@@ -16,10 +16,19 @@ uv sync
 
 ### 2. Pull models
 
+**Required:** The embedding model must be pulled before indexing:
+
 ```bash
 ollama pull nomic-embed-text
+```
+
+**Required for LLM features** (query answering, entity extraction, summarization, auto-tagging):
+
+```bash
 ollama pull qwen3:4b
 ```
+
+> You can substitute any Ollama model — set `OLLAMA_EMBED_MODEL` and `OLLAMA_CHAT_MODEL` in `.env`.
 
 ### 3. Configure environment
 
@@ -537,7 +546,7 @@ mcpServers:
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Base URL (swap for Groq, Together, vLLM) |
 | `OPENAI_CHAT_MODEL` | `gpt-4o-mini` | OpenAI chat model name |
 | `OPENAI_EMBED_MODEL` | `text-embedding-3-small` | OpenAI embedding model name |
-| `VAULT_PATH` | — | Absolute path to the Obsidian vault (required for file watcher) |
+| `VAULT_PATH` | — | Absolute path to the Obsidian vault. **Required only for file watcher** (`–watch`). One-shot indexing works via the Obsidian REST API without setting this. |
 | `CHROMA_PATH` | `data/chroma_db` | ChromaDB persistent storage path |
 | `DATA_DIR` | `data` | Override data storage root |
 | `READ_WORKERS` | `2` | Parallel note readers for initial fetch |
@@ -561,9 +570,64 @@ mcpServers:
 
 ---
 
-## Logs
+## Example Use Cases
 
-| Log file | Contents |
-|----------|----------|
-| `logs/indexer.log` | Indexing errors with timestamps |
-| `logs/mcp_calls.log` | MCP tool calls with timestamps |
+### "What does my vault say about ESP32?"
+
+```bash
+obsidian-ai ask "What projects involve ESP32?"
+# → LLM-powered answer synthesised from all ESP32-related notes
+```
+
+### "Find all notes about machine learning, tagged for review"
+
+```bash
+obsidian-ai search "machine learning" -n 20 --tags review
+# → Semantic search filtered by YAML tag
+```
+
+### "Auto-tag all notes about embedded systems"
+
+```bash
+obsidian-ai tag-notes "embedded systems programming" -k 10
+# → LLM reads top-10 matching notes, suggests + applies tags automatically
+```
+
+### "Show me the most connected notes in my vault"
+
+```bash
+obsidian-ai search-by-tags project
+# or via MCP: get_graph_stats() → lists hub notes with most wiki-links
+```
+
+### "Create a note about my new PCB project and link it to ESP32"
+
+```bash
+obsidian-ai add-note-to-subject ESP32 "PCB Rev3 Design" \
+  "Notes about the ESP32 PCB revision 3 design."
+# → Creates note under Subjects/ESP32/, adds [[ESP32]] backlink
+```
+
+---
+
+## Performance Notes
+
+Tested on **RTX 3060 (6GB VRAM)** with Ollama:
+
+| Operation | Typical Time |
+|-----------|-------------|
+| Full index (500 notes, ~3k chunks) | ~8-12 minutes |
+| Incremental index (1 changed note) | ~2-5 seconds |
+| Semantic search (top-5) | ~500ms |
+| LLM query answer | ~3-8 seconds |
+| Entity extraction per note | ~1-3 seconds |
+
+**Hardware:** `embed_worker_ceil=3`, `llm_chat_concurrency=1`, `chunk_size=500` words. GPU temperature limit set to 85°C to prevent TDR crashes during long index runs.
+
+### Delta Indexing Roadmap
+
+Chunk-level delta indexing is the **primary optimization opportunity** and is targeted for **v0.2.0**. Current behavior: when a note changes, all its chunks are re-embedded. The planned improvement diffs old vs. new chunks and only re-embeds changed sections, delivering ~95% faster re-indexing for small edits. For vaults under 1,000 notes, the current full re-index is acceptable.
+
+---
+
+## Logs

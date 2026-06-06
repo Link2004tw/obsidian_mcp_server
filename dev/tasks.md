@@ -318,6 +318,22 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 
 ---
 
+## Phase 22 — Pre-Publication Checklist
+
+| #    | Task                                              | Description                                                                                                                                                                                 | Difficulty | Priority | Status |
+| ---- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------- | ------ |
+| 22.1 | Create LICENSE file (MIT)                         | Add `LICENSE` file with standard MIT license text to repo root; README already references MIT                                                                                               | Low        | P1       | ❌     |
+| 22.2 | Expand CHANGELOG.md for v0.1.0                    | Replace one-liner with detailed feature breakdown (search, graph, entities, todos, MCP tools, indexing, etc.) organized by category; keep existing v0.2.0 entry                             | Low        | P1       | ❌     |
+| 22.3 | Add PyPI classifiers + project URLs               | Add `[project.urls]` section to `pyproject.toml` (Homepage, Repository, Documentation, Issues); classifiers already good                                                                   | Low        | P1       | ❌     |
+| 22.4 | Clarify VAULT_PATH / embedding model requirements | Document that VAULT_PATH is required only for file watcher; embedding model must be pre-pulled; clarify what's optional vs mandatory in README setup                                        | Low        | P1       | ❌     |
+| 22.5 | Add performance notes & delta indexing roadmap    | Document RTX 3060 tested hardware, typical indexing speed; state chunk-level delta indexing as v0.2.0 goal; current full re-index acceptable for <1000-note vaults                          | Low        | P2       | ❌     |
+| 22.6 | Verify test status                                | Run `pytest` against the 21 existing test files; document pass/fail status; fix any regressions before release                                                                              | Medium     | P1       | ❌     |
+| 22.7 | Create GitHub Release v0.1.0                      | Tag current HEAD as `v0.1.0`, push tag, create GitHub Release with notes drawn from CHANGELOG                                                                                                | Low        | P1       | ❌     |
+| 22.8 | Add use-case examples to README                   | Brief interaction examples: "Ask a research vault a question", "Find all notes about topic X", "Auto-tag notes about Y"                                                                     | Low        | P2       | ❌     |
+| **Phase 22 Total**                                | **8**       | **0**     | **6**     | **2**     | **0**     | **8**         |
+
+---
+
 ## Phase 21 — Multi-Provider LLM Support
 
 | #    | Task                                                            | Description                                                                                                                                                                                 | Difficulty | Priority | Status |
@@ -359,4 +375,5 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | Phase 19 — Knowledge Graph & Analytics                      | 5           | 0      | 2      | 3      | 5      | 0         |
 | Phase 20 — Quality-of-Life Improvements                    | 4           | 0      | 3      | 1      | 4      | 0         |
 | Phase 21 — Multi-Provider LLM Support                      | 8           | 7      | 1      | 0      | 8      | 0         |
-| **Total**                                                   | **179**     | **57** | **75** | **47** | **179** | **0**     |
+| Phase 22 — Pre-Publication Checklist                       | 8           | 0      | 6      | 2      | 0      | 8         |
+| **Total**                                                   | **187**     | **57** | **81** | **49** | **179** | **8**     |
