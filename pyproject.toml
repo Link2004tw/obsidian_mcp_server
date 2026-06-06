@@ -1,6 +1,6 @@
 [project]
 name = "obsidian-ai"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local, privacy-first AI knowledge layer for Obsidian vaults"
 readme = "README.md"
 license = "MIT"
