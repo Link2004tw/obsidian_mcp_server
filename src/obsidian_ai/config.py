@@ -26,9 +26,18 @@ class _RedactedString(str):
 
 obsidian_api_key: str = _RedactedString(os.getenv("OBSIDIAN_API_KEY", ""))
 
+# Provider selection
+llm_provider = os.getenv("LLM_PROVIDER", "ollama")
+embed_provider = os.getenv("EMBED_PROVIDER", "ollama")
+
 ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 ollama_embed_model = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 ollama_chat_model = os.getenv("OLLAMA_CHAT_MODEL", "qwen3:4b")
+
+openai_api_key: str = _RedactedString(os.getenv("OPENAI_API_KEY", ""))
+openai_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+openai_chat_model = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
+openai_embed_model = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
 
 _project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 data_dir = os.getenv("DATA_DIR", os.path.join(_project_root, "data"))
@@ -82,38 +91,53 @@ def validate(verbose: bool = True) -> list[str]:
     elif not os.path.isdir(vault_path):
         warnings.append(f"VAULT_PATH '{vault_path}' is not a valid directory")
 
-    # Check Ollama connectivity
-    try:
-        resp = requests.get(f"{ollama_base_url}/api/tags", timeout=5)
-        resp.raise_for_status()
-        models = [m["name"] for m in resp.json().get("models", [])]
-        if verbose:
-            log.info("Ollama at %s — %d models available", ollama_base_url, len(models))
+    # Check providers
+    if embed_provider not in ("ollama", "openai"):
+        warnings.append(f"Unknown EMBED_PROVIDER '{embed_provider}', expected 'ollama' or 'openai'")
+    if llm_provider not in ("ollama", "openai"):
+        warnings.append(f"Unknown LLM_PROVIDER '{llm_provider}', expected 'ollama' or 'openai'")
 
-        # Check chat model
-        chat_models = [m for m in models if ollama_chat_model in m]
-        if not chat_models:
-            suggestions = [m for m in models if "qwen" in m or "llama" in m or "mistral" in m]
-            hint = f" Available chat models: {suggestions[:5]}" if suggestions else ""
-            warnings.append(f"Chat model '{ollama_chat_model}' not found in Ollama.{hint}")
+    # Check Ollama if used
+    if llm_provider == "ollama" or embed_provider == "ollama":
+        try:
+            resp = requests.get(f"{ollama_base_url}/api/tags", timeout=5)
+            resp.raise_for_status()
+            models = [m["name"] for m in resp.json().get("models", [])]
+            if verbose:
+                log.info("Ollama at %s — %d models available", ollama_base_url, len(models))
+
+            if llm_provider == "ollama":
+                chat_models = [m for m in models if ollama_chat_model in m]
+                if not chat_models:
+                    suggestions = [m for m in models if "qwen" in m or "llama" in m or "mistral" in m]
+                    hint = f" Available chat models: {suggestions[:5]}" if suggestions else ""
+                    warnings.append(f"Chat model '{ollama_chat_model}' not found in Ollama.{hint}")
+                elif verbose:
+                    matched = f" (matched: {chat_models[0]})" if chat_models[0] != ollama_chat_model else ""
+                    log.info("Chat model: %s%s", ollama_chat_model, matched)
+
+            if embed_provider == "ollama":
+                embed_models = [m for m in models if ollama_embed_model in m]
+                if not embed_models:
+                    suggestions = [m for m in models if "embed" in m or "nomic" in m]
+                    hint = f" Available embed models: {suggestions[:5]}" if suggestions else ""
+                    warnings.append(f"Embed model '{ollama_embed_model}' not found in Ollama.{hint}")
+                elif verbose:
+                    matched = f" (matched: {embed_models[0]})" if embed_models[0] != ollama_embed_model else ""
+                    log.info("Embed model: %s%s", ollama_embed_model, matched)
+
+        except requests.exceptions.ConnectionError:
+            warnings.append(f"Cannot connect to Ollama at {ollama_base_url} — is it running?")
+        except Exception as e:
+            warnings.append(f"Ollama check failed: {e}")
+
+    # Check OpenAI if used
+    if llm_provider == "openai" or embed_provider == "openai":
+        if not openai_api_key:
+            warnings.append("OPENAI_API_KEY is not set — OpenAI provider calls will fail")
         elif verbose:
-            matched = f" (matched: {chat_models[0]})" if chat_models[0] != ollama_chat_model else ""
-            log.info("Chat model: %s%s", ollama_chat_model, matched)
-
-        # Check embed model
-        embed_models = [m for m in models if ollama_embed_model in m]
-        if not embed_models:
-            suggestions = [m for m in models if "embed" in m or "nomic" in m]
-            hint = f" Available embed models: {suggestions[:5]}" if suggestions else ""
-            warnings.append(f"Embed model '{ollama_embed_model}' not found in Ollama.{hint}")
-        elif verbose:
-            matched = f" (matched: {embed_models[0]})" if embed_models[0] != ollama_embed_model else ""
-            log.info("Embed model: %s%s", ollama_embed_model, matched)
-
-    except requests.exceptions.ConnectionError:
-        warnings.append(f"Cannot connect to Ollama at {ollama_base_url} — is it running?")
-    except Exception as e:
-        warnings.append(f"Ollama check failed: {e}")
+            log.info("OpenAI API key found, base URL: %s", openai_base_url)
+            log.info("OpenAI chat model: %s, embed model: %s", openai_chat_model, openai_embed_model)
 
     # Check data directory
     try:

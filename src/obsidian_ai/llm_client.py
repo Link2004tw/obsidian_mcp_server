@@ -3,76 +3,13 @@ import json
 import os
 import time
 
-import requests
-
 from . import config
+from .providers import get_provider
+from .providers.base import BaseLLMProvider
 
-REQUEST_TIMEOUT = int(os.getenv("OLLAMA_CHAT_TIMEOUT", "45"))
-EMBED_TIMEOUT = 60
-MAX_RETRIES = 2
-INITIAL_BACKOFF = 2
 MAX_CONTEXT_WORDS = 3000
 
-RETRYABLE_STATUSES = {429, 502, 503}
-
-# ── Degraded-mode support ──────────────────────────────────────────
-_AVAILABLE: bool | None = None
-_AVAILABLE_LAST_CHECK: float = 0
-_AVAILABLE_CACHE_SECONDS = 30
-
-
-class ServiceUnavailableError(Exception):
-    """Raised when Ollama is not reachable or a required model is missing."""
-
-
-def is_available() -> bool:
-    """Check if Ollama is reachable and has the required models. Results are cached for 30s."""
-    global _AVAILABLE, _AVAILABLE_LAST_CHECK
-    now = time.time()
-    if _AVAILABLE is not None and (now - _AVAILABLE_LAST_CHECK) < _AVAILABLE_CACHE_SECONDS:
-        return _AVAILABLE
-    try:
-        resp = requests.get(f"{config.ollama_base_url}/api/tags", timeout=5)
-        resp.raise_for_status()
-        models = [m["name"] for m in resp.json().get("models", [])]
-        has_chat = any(config.ollama_chat_model in m for m in models)
-        has_embed = any(config.ollama_embed_model in m for m in models)
-        _AVAILABLE = bool(models)  # At least one model available
-        _AVAILABLE_LAST_CHECK = now
-        if not has_chat:
-            from .logger import get_logger
-            get_logger(__name__).warning(f"Chat model '{config.ollama_chat_model}' not found in Ollama")
-        if not has_embed:
-            from .logger import get_logger
-            get_logger(__name__).warning(f"Embed model '{config.ollama_embed_model}' not found in Ollama")
-        return _AVAILABLE
-    except Exception:
-        _AVAILABLE = False
-        _AVAILABLE_LAST_CHECK = now
-        return False
-
-
-def check_health() -> dict:
-    """Return a dict with health status of all dependencies."""
-    ollama_ok = is_available()
-    status = {
-        "ollama": {
-            "available": ollama_ok,
-            "url": config.ollama_base_url,
-            "chat_model": config.ollama_chat_model,
-            "embed_model": config.ollama_embed_model,
-        },
-        "overall": "healthy" if ollama_ok else "degraded",
-    }
-    if ollama_ok:
-        try:
-            resp = requests.get(f"{config.ollama_base_url}/api/tags", timeout=5)
-            models = [m["name"] for m in resp.json().get("models", [])]
-            status["ollama"]["models"] = models
-        except Exception:
-            status["ollama"]["models"] = []
-    return status
-
+# ── Shared embedding cache (provider-agnostic) ──────────────────────
 _EMBED_CACHE_SIZE = 100
 EMBED_CACHE_PATH = os.path.join(config.data_dir, "embed_cache.json")
 _EMBED_PERSISTENT_CACHE: dict[str, list[float]] = {}
@@ -91,7 +28,6 @@ def _load_embed_cache() -> dict[str, list[float]]:
 
 
 def save_embed_cache() -> None:
-    """Write the persistent embedding cache to disk."""
     try:
         os.makedirs(os.path.dirname(EMBED_CACHE_PATH), exist_ok=True)
         with open(EMBED_CACHE_PATH, "w", encoding="utf-8") as f:
@@ -101,58 +37,90 @@ def save_embed_cache() -> None:
         get_logger(__name__).warning(f"Failed to save embed cache: {e}")
 
 
-# Load persistent cache on module init
 _EMBED_PERSISTENT_CACHE.update(_load_embed_cache())
 
+# ── Provider instances (lazy) ───────────────────────────────────────
+_CHAT_PROVIDER: BaseLLMProvider | None = None
+_EMBED_PROVIDER: BaseLLMProvider | None = None
+_PROVIDER_INIT_TIME: dict[str, float] = {}
 
-def _request_with_retry(method, url, *, timeout, **kwargs):
-    for attempt in range(MAX_RETRIES):
-        try:
-            resp = requests.request(method, url, timeout=timeout, **kwargs)
-            resp.raise_for_status()
-            return resp
-        except requests.exceptions.ReadTimeout:
-            if attempt == MAX_RETRIES - 1:
-                raise
-            wait = INITIAL_BACKOFF * (2 ** attempt)
-            time.sleep(wait)
-        except requests.exceptions.ConnectionError:
-            if attempt == MAX_RETRIES - 1:
-                raise
-            wait = INITIAL_BACKOFF * (2 ** attempt)
-            time.sleep(wait)
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code in RETRYABLE_STATUSES and attempt < MAX_RETRIES - 1:
-                wait = INITIAL_BACKOFF * (2 ** attempt)
-                time.sleep(wait)
-            else:
-                raise
+
+def _get_chat_provider() -> BaseLLMProvider:
+    global _CHAT_PROVIDER
+    if _CHAT_PROVIDER is None:
+        _CHAT_PROVIDER = get_provider(config.llm_provider)
+        _PROVIDER_INIT_TIME["chat"] = time.time()
+    p = _CHAT_PROVIDER
+    assert p is not None
+    return p
+
+
+def _get_embed_provider() -> BaseLLMProvider:
+    global _EMBED_PROVIDER
+    if _EMBED_PROVIDER is None:
+        _EMBED_PROVIDER = get_provider(config.embed_provider)
+        _PROVIDER_INIT_TIME["embed"] = time.time()
+    p = _EMBED_PROVIDER
+    assert p is not None
+    return p
+
+
+# ── Public API ──────────────────────────────────────────────────────
+
+def is_available() -> bool:
+    try:
+        chat_ok = _get_chat_provider().is_available()
+    except Exception:
+        chat_ok = False
+    try:
+        embed_ok = _get_embed_provider().is_available()
+    except Exception:
+        embed_ok = False
+    return chat_ok and embed_ok
+
+
+def check_health() -> dict:
+    try:
+        chat_health = _get_chat_provider().check_health()
+    except Exception as e:
+        chat_health = {"error": str(e)}
+
+    try:
+        embed_health = _get_embed_provider().check_health()
+    except Exception as e:
+        embed_health = {"error": str(e)}
+
+    chat_status = chat_health.get("overall") or next(
+        (v.get("available") for v in chat_health.values() if isinstance(v, dict)),
+        False,
+    )
+    embed_status = embed_health.get("overall") or next(
+        (v.get("available") for v in embed_health.values() if isinstance(v, dict)),
+        False,
+    )
+
+    both_ok = (
+        (chat_status == "healthy" or chat_status is True)
+        and (embed_status == "healthy" or embed_status is True)
+    )
+
+    merged = {}
+    merged.update(chat_health)
+    merged.update(embed_health)
+    merged["overall"] = "healthy" if both_ok else "degraded"
+    return merged
 
 
 def embed(text: str) -> list[float]:
     cached = _EMBED_PERSISTENT_CACHE.get(text)
     if cached is not None:
         return cached
-    resp = _request_with_retry(
-        "POST",
-        f"{config.ollama_base_url}/api/embeddings",
-        json={"model": config.ollama_embed_model, "prompt": text},
-        timeout=EMBED_TIMEOUT,
-    )
-    data = resp.json()
-    embedding = data["embedding"]
-    assert isinstance(embedding, list)
-    _EMBED_PERSISTENT_CACHE[text] = embedding
-    return embedding
+    result = _get_embed_provider().embed(text)
+    _EMBED_PERSISTENT_CACHE[text] = result
+    return result
 
 
 def batch_embed(texts: list[str]) -> list[list[float]]:
-    """Embed multiple texts in a single Ollama API call via ``/api/embed``.
-
-    Checks the persistent cache first; only uncached texts are sent to Ollama.
-    Handles 1 or many texts. Falls back to sequential ``embed()`` if the
-    batch endpoint is not available (Ollama < 0.3).
-    """
     if not texts:
         return []
 
@@ -170,19 +138,11 @@ def batch_embed(texts: list[str]) -> list[list[float]]:
 
     if uncached_texts:
         try:
-            resp = _request_with_retry(
-                "POST",
-                f"{config.ollama_base_url}/api/embed",
-                json={"model": config.ollama_embed_model, "input": uncached_texts},
-                timeout=EMBED_TIMEOUT,
-            )
-            data = resp.json()
-            embeddings = data["embeddings"]
+            embeddings = _get_embed_provider().batch_embed(uncached_texts)
             for idx, emb in zip(uncached_indices, embeddings, strict=False):
                 _EMBED_PERSISTENT_CACHE[texts[idx]] = emb
                 results[idx] = emb
         except Exception:
-            # Fallback to sequential embed (handles Ollama < 0.3 gracefully)
             for idx in uncached_indices:
                 results[idx] = embed(texts[idx])
 
@@ -191,9 +151,9 @@ def batch_embed(texts: list[str]) -> list[list[float]]:
 
 
 def clear_embed_cache() -> None:
-    """Clear the LRU and persistent cache for ``embed()``."""
-    embed.cache_clear()
+    embed.cache_clear()  # type: ignore[attr-defined]
     _EMBED_PERSISTENT_CACHE.clear()
+    _get_embed_provider().clear_embed_cache()
     try:
         if os.path.isfile(EMBED_CACHE_PATH):
             os.remove(EMBED_CACHE_PATH)
@@ -202,62 +162,36 @@ def clear_embed_cache() -> None:
 
 
 def switch_embed_model(model_name: str) -> None:
-    """Switch the embedding model at runtime.
-
-    Updates ``config.ollama_embed_model`` and clears the embed cache
-    so subsequent ``embed()`` calls use the new model.
-    """
-    config.ollama_embed_model = model_name
+    _get_embed_provider().switch_embed_model(model_name)
     clear_embed_cache()
 
 
 def embed_cache_info() -> dict:
-    """Return embedding cache stats: hits, misses, maxsize, currsize, persistent_size."""
-    info = embed.cache_info()
-    return {
+    info = embed.cache_info()  # type: ignore[attr-defined]
+    provider_info = _get_embed_provider().embed_cache_info()
+    result = {
         "hits": info.hits,
         "misses": info.misses,
         "maxsize": info.maxsize,
         "currsize": info.currsize,
         "persistent_size": len(_EMBED_PERSISTENT_CACHE),
     }
-
-
-# Apply LRU cache after the function definition (works around the decoration ordering)
-embed = functools.lru_cache(maxsize=_EMBED_CACHE_SIZE)(embed)  # type: ignore[misc]
+    result.update(provider_info)
+    return result
 
 
 def chat(messages: list[dict], model: str | None = None, think: bool = True) -> str:
-    model = model or config.ollama_chat_model
     msgs = list(messages)
     if not think and msgs:
         msgs[0] = {**msgs[0], "content": "/no_think\n" + msgs[0]["content"]}
-    payload = {
-        "model": model,
-        "messages": msgs,
-        "stream": False,
-        "keep_alive": "5m",
-    }
-    resp = _request_with_retry(
-        "POST",
-        f"{config.ollama_base_url}/api/chat",
-        json=payload,
-        timeout=REQUEST_TIMEOUT,
-    )
-    data = resp.json()
-    content = data["message"]["content"]
-    assert isinstance(content, str)
-    return content
+    return _get_chat_provider().chat(msgs, model=model)
 
 
 def chat_safe(messages: list[dict], model: str | None = None, think: bool = True) -> str | None:
-    """Like ``chat()`` but returns ``None`` if Ollama is unavailable (no exception)."""
-    if not is_available():
-        return None
-    try:
-        return chat(messages, model=model, think=think)
-    except Exception:
-        return None
+    msg = list(messages)
+    if not think and msg:
+        msg[0] = {**msg[0], "content": "/no_think\n" + msg[0]["content"]}
+    return _get_chat_provider().chat_safe(msg, model=model)
 
 
 def truncate_to_budget(text: str, max_words: int = MAX_CONTEXT_WORDS) -> str:
@@ -265,3 +199,7 @@ def truncate_to_budget(text: str, max_words: int = MAX_CONTEXT_WORDS) -> str:
     if len(words) <= max_words:
         return text
     return " ".join(words[:max_words]) + "\n\n[truncated]"
+
+
+# Apply LRU cache after the function definition
+embed = functools.lru_cache(maxsize=_EMBED_CACHE_SIZE)(embed)  # type: ignore[misc]
