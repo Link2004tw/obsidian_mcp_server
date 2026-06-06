@@ -9,11 +9,14 @@ from . import (
     _index_utils as utils,
 )
 from . import (
+    chroma_store,
     chunker,
     config,
+    entity_extractor,
     extract_entities_pipeline,
     graph_store,
     obsidian_client,
+    summarizer,
     summarize_pipeline,
 )
 from .frontmatter import add_tags as fm_add_tags
@@ -36,17 +39,79 @@ def add_tags_to_note(path: str, tags: list[str]) -> None:
     obsidian_client.put_note(path, new_content)
 
 
-def run_index():
-    """Full index pipeline: Phase 1 (chunk+embed) then Phase 2 (entity extraction + summaries)."""
+def index_note(path: str, force: bool = False) -> bool:
+    """Incrementally index a single note: chunk + embed, update graph, extract entities, generate summary.
+
+    Uses the same hash-based delta detection as the watcher —
+    unchanged chunks are skipped, cached entity/summary results are reused.
+
+    When ``force=True``, entity/summary caches and ChromaDB metadata are
+    cleared so the LLM re-extracts entities, relationships, and summaries
+    even when content hasn't changed.  Chunks are NOT re-embedded.
+
+    Returns True if the note was successfully processed.
+    """
+    try:
+        content = obsidian_client.get_note(path)
+    except Exception as e:
+        log_error(log, f"index_note — failed to read: {path}", exc=e)
+        return False
+
+    current_hash = utils.compute_hash(content)
+
+    # Phase 1: chunk + embed (nomic) — no LLM chat calls
+    chunker.index_note(path, content=content, _content_hash=current_hash)
+
+    # Update wiki-link graph
+    graph_store.register_title(path)
+    for link in extract_wiki_links(content):
+        resolved = graph_store.resolve_link(link)
+        if resolved and resolved != path:
+            graph_store.add_edge(path, resolved)
+    graph_store.save()
+
+    # Persist content hash and mtime
+    hash_map = utils.load_hash_map()
+    hash_map[path] = current_hash
+    utils.save_hash_map(hash_map)
+    mtime_map = utils.load_mtime_map()
+    current_mtime = utils._get_file_mtime(path)
+    if current_mtime is not None:
+        mtime_map[path] = current_mtime
+    utils.save_mtime_map(mtime_map)
+
+    # Phase 2a: entity extraction
+    if not SKIP_ENTITIES:
+        if force:
+            chroma_store.update_metadata(path, {"entities_str": "", "summary": ""})
+            entity_extractor.clear_cache_for_hash(current_hash)
+        extract_entities_pipeline.extract_note_entities(path, force=force)
+
+    # Phase 2b: summary generation
+    if not SKIP_SUMMARIES:
+        if force:
+            summarizer.clear_cache_for_hash(current_hash)
+        summarize_pipeline.extract_note_summary(path, force=force)
+
+    log.info(f"index_note — done: {path}")
+    return True
+
+
+def run_index(folder: str | None = None):
+    """Full index pipeline: Phase 1 (chunk+embed) then Phase 2 (entity extraction + summaries).
+
+    Args:
+        folder: If set, only index notes under this vault-relative folder path.
+    """
     start = time.time()
 
     # Phase 1: chunk + embed (nomic) — no LLM chat calls
-    chunker.run_chunking()
+    chunker.run_chunking(folder=folder)
 
     # Phase 2a: entity extraction
     if not SKIP_ENTITIES:
         log.info("Starting entity extraction phase")
-        extract_entities_pipeline.run_entity_extraction(force=False, skip_cached=True)
+        extract_entities_pipeline.run_entity_extraction(force=False, skip_cached=True, folder=folder)
     else:
         log.info("Entity extraction skipped (SKIP_ENTITIES set)")
 
@@ -58,7 +123,7 @@ def run_index():
     # Phase 2b: summary generation
     if not SKIP_SUMMARIES:
         log.info("Starting summary generation phase")
-        summarize_pipeline.run_summary_generation(force=False, skip_cached=True)
+        summarize_pipeline.run_summary_generation(force=False, skip_cached=True, folder=folder)
     else:
         log.info("Summary generation skipped (SKIP_SUMMARIES set)")
 

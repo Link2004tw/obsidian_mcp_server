@@ -331,9 +331,7 @@
       "copilot/copilot-conversations/User_Asks_for_Opinion@20260525_150920.md",
       "copilot/copilot-conversations/Your_Thoughts@20260525_151423.md"
     ],
-    "Me/Friends/Maria.md": [
-      "Subjects/Maria/Maria.md"
-    ],
+    "Me/Friends/Maria.md": [],
     "__entity:Concept:the poem": [
       "Me/Friends/Maria.md"
     ],
@@ -586,6 +584,7 @@
       "Me/Poems/A future with you.md",
       "Me/Poems/For God you're enough.md",
       "Me/Poems/I need your clarity G.md",
+      "Subjects/God/Verses.md",
       "copilot/copilot-conversations/Growth_Journey_Reflection@20260324_192850.md",
       "copilot/copilot-conversations/Seeking_Information,_Feeling_Fear@20260513_120038.md",
       "copilot/copilot-conversations/Still_Guilty@20260326_032354.md"
@@ -1852,8 +1851,27 @@
     "__entity:Concept:Super Nova": [
       "management/Lina/Song.md"
     ],
+    "__entity:Concept:Maria": [
+      "Subjects/Maria/I am tired of far away love.md"
+    ],
     "Subjects/Maria/Maria.md": [
-      "Me/Friends/Maria.md"
+      "Me/Poems/I think you are perfect.md",
+      "Subjects/Maria/I am tired of far away love.md"
+    ],
+    "Subjects/Maria/Friends - Maria.md": [
+      "Me/Friends/Favourite Lists/Maria.md"
+    ],
+    "Subjects/Maria/I think you are perfect.md": [
+      "Me/Friends/Favourite Lists/Maria.md"
+    ],
+    "Subjects/Maria/I am tired of far away love.md": [
+      "Subjects/Maria/Maria.md"
+    ],
+    "Subjects/God/Verses.md": [
+      "Subjects/God/God.md"
+    ],
+    "Subjects/God/God.md": [
+      "Subjects/God/Verses.md"
     ]
   },
   "title_map": {
@@ -2014,6 +2032,8 @@
     "tante dina's favourite": "management/Lina/Tante Dina's favourite.md",
     "coursenote template": "management/templates/CourseNote template.md",
     "fear template": "management/templates/Fear template.md",
-    "todos": "todos.md"
+    "todos": "todos.md",
+    "friends - maria": "Subjects/Maria/Friends - Maria.md",
+    "god": "Subjects/God/God.md"
   }
 }

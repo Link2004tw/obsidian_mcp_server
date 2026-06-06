@@ -19,6 +19,40 @@ from ..logger import get_logger
 
 log = get_logger("obsidian_ai.tools._shared")
 
+# ── vault file scan ───────────────────────────────────────────────
+
+
+def _find_notes_mentioning(name: str) -> list[str]:
+    """Walk vault and return relative paths of ``.md`` files whose content contains ``name``.
+
+    Uses a plain-text substring check — no LLM, no API calls.
+    Returns paths sorted alphabetically, excluding the entity/subject hub itself
+    to avoid a redundant re-index cycle.
+    """
+    vault = config.vault_path
+    if not vault or not os.path.isdir(vault):
+        return []
+    vault_norm = vault.replace("\\", "/").rstrip("/") + "/"
+    matches: list[str] = []
+    for root, _, files in os.walk(vault):
+        for f in files:
+            if not f.endswith(".md"):
+                continue
+            abs_path = os.path.join(root, f)
+            rel_path = abs_path.replace("\\", "/")
+            if not rel_path.startswith(vault_norm):
+                continue
+            rel_path = rel_path[len(vault_norm):]
+            try:
+                with open(abs_path, "r", encoding="utf-8") as fh:
+                    if name in fh.read():
+                        matches.append(rel_path)
+            except Exception:
+                continue
+    matches.sort()
+    return matches
+
+
 # ── filter builder ─────────────────────────────────────────────────
 
 

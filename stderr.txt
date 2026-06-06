@@ -1,0 +1,1 @@
+Error calling get_index_stats: unhandled errors in a TaskGroup (1 sub-exception)

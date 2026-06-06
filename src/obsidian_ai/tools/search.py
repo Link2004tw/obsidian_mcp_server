@@ -1,10 +1,12 @@
 """Search and retrieval tools for the Obsidian MCP server."""
 
+import re
 
 from .. import (
     chroma_store,
     config,
     entity_store,
+    indexer,
     llm_client,
     pipelines,
     ranker,
@@ -403,12 +405,13 @@ def retrieve_notes(
         return []
 
 
-def tag_notes(query: str, top_k: int = 5) -> str:
+def tag_notes(query: str, top_k: int = 5, sync: bool = True) -> str:
     """Search notes matching a query and auto-suggest tags using LLM.
 
     Args:
         query: search query to find relevant notes.
         top_k: number of notes to process (default 5).
+        sync: if True (default), re-index each tagged note so changes are reflected in search.
 
     Returns:
         Confirmation message with the tag map.
@@ -416,6 +419,14 @@ def tag_notes(query: str, top_k: int = 5) -> str:
     log.info(f"tag_notes — query={query!r}, top_k={top_k}")
     try:
         result = pipelines.tag_notes(query, top_k=top_k)
+        if sync:
+            # Extract note paths from the result JSON and re-index each
+            import json
+            m = re.search(r"\{.*\}", result, re.DOTALL)
+            if m:
+                tag_map = json.loads(m.group())
+                for path in tag_map:
+                    indexer.index_note(path)
         log.info("tag_notes — done")
         return result
     except Exception as e:

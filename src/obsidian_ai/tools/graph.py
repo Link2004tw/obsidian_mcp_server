@@ -8,12 +8,14 @@ from .. import (
     entity_relations,
     entity_store,
     graph_store,
+    indexer,
     obsidian_client,
     ranker,
 )
 from ..frontmatter import parse as fm_parse
 from ..logger import get_logger, log_error
 from ._shared import (
+    _find_notes_mentioning,
     _hybrid_search,
     _normalize_path,
     _truncate_snippet,
@@ -629,6 +631,7 @@ def add_entity(
     entity_type: str = "Concept",
     aliases: list[str] | None = None,
     relations: list[dict] | None = None,
+    reindex_matches: bool = True,
 ) -> str:
     """Manually add an entity to the knowledge index and relationship graph.
 
@@ -648,6 +651,9 @@ def add_entity(
         relations: optional list of relationship dicts, each with
             ``target`` (required), ``type`` (default ``"related_to"``),
             and ``confidence`` (default 0.5).
+        reindex_matches: if True (default), scan the vault for notes that mention
+            this entity name and force-re-index them so they pick up the new
+            entity from the LLM.
 
     Returns:
         A confirmation message with the created entity details.
@@ -681,9 +687,98 @@ def add_entity(
         ]
         if relations:
             lines.append(f"  Relations:  {len(relations)} created")
+
+        reindexed = 0
+        if reindex_matches:
+            for p in _find_notes_mentioning(name):
+                if indexer.index_note(p, force=True):
+                    reindexed += 1
+        if reindexed:
+            lines.append(f"  Re-indexed: {reindexed} existing notes mentioning this entity")
+
         return "\n".join(lines)
     except Exception as e:
         log_error(log, "add_entity FAILED", exc=e, name=name, entity_type=entity_type)
+        return f"Error: {e}"
+
+
+def add_aliases(name: str, new_aliases: list[str], reindex_matches: bool = True) -> str:
+    """Add aliases to an existing entity.
+
+    Aliases allow the entity to be found by alternative names in searches.
+    For example, adding ``"Yahweh"`` as an alias of ``"God"`` means searching
+    for ``"Yahweh"`` will find notes about God.
+
+    Args:
+        name: canonical entity name (e.g. ``"God"``, ``"ESP32"``).
+        new_aliases: list of alias strings to add (e.g. ``["Yahweh", "Elohim"]``).
+        reindex_matches: if True (default), scan the vault for notes that mention
+            any of the new aliases and force-re-index them so they pick up this
+            entity from the LLM.
+
+    Returns:
+        A confirmation message with the updated alias list.
+    """
+    log.info(f"add_aliases — name={name}, new_aliases={new_aliases}")
+    try:
+        result = entity_store.add_aliases(name, new_aliases)
+        if result is None:
+            return f"Entity '{name}' not found."
+
+        alias_str = ", ".join(result["aliases"]) if result["aliases"] else "(none)"
+        lines = [
+            f"Aliases added to \"{result['entity_name']}\":",
+            f"  Type:       {result['entity_type']}",
+            f"  Aliases:    {alias_str}",
+            f"  Mentions:   {result['mention_count']}",
+        ]
+
+        if reindex_matches:
+            all_names = [name] + new_aliases
+            seen: set[str] = set()
+            reindexed = 0
+            for n in all_names:
+                for p in _find_notes_mentioning(n):
+                    if p not in seen:
+                        seen.add(p)
+                        if indexer.index_note(p, force=True):
+                            reindexed += 1
+            if reindexed:
+                lines.append(f"  Re-indexed: {reindexed} existing notes mentioning this entity or its aliases")
+
+        return "\n".join(lines)
+    except Exception as e:
+        log_error(log, "add_aliases FAILED", exc=e, name=name, new_aliases=new_aliases)
+        return f"Error: {e}"
+
+
+def change_entity_type(name: str, new_type: str) -> str:
+    """Change the type of an existing entity.
+
+    For example, if ``"Maria"`` was auto-classified as ``Concept`` but
+    should be ``Person``, use this tool to correct it.
+
+    Args:
+        name: entity name (canonical or alias).
+        new_type: one of Person, Project, Hardware, Technology, Location,
+            Concept, Event.
+
+    Returns:
+        A confirmation message with the updated entity details.
+    """
+    log.info(f"change_entity_type — name={name}, new_type={new_type}")
+    try:
+        result = entity_store.change_entity_type(name, new_type)
+        if result is None:
+            return f"Entity '{name}' not found."
+        return (
+            f"Entity type changed:\n"
+            f"  Name:       \"{result['entity_name']}\"\n"
+            f"  New type:   {result['entity_type']}\n"
+            f"  Mentions:   {result['mention_count']}"
+        )
+    except Exception as e:
+        log_error(log, "change_entity_type FAILED", exc=e, name=name, new_type=new_type)
         return f"Error: {e}"
 
 
@@ -739,6 +834,8 @@ __all_tools__ = [
     "get_entity_aliases",
     "list_entities",
     "add_entity",
+    "add_aliases",
+    "change_entity_type",
     "merge_entities",
     "entity_timeline",
     "related_entities",

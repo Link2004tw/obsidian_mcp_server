@@ -82,9 +82,13 @@ def extract_note_summary(path: str, *, force: bool = False) -> bool:
     return True
 
 
-def run_summary_generation(*, force: bool = False, skip_cached: bool = True, enable_temp_check: bool = True):
-    """Phase: generate summaries for all notes."""
+def run_summary_generation(*, force: bool = False, skip_cached: bool = True, enable_temp_check: bool = True, folder: str | None = None):
+    """Phase: generate summaries for all notes (or a folder)."""
     notes = obsidian_client.list_all_notes()
+    if folder:
+        folder_prefix = folder.strip("/").rstrip("/") + "/"
+        notes = [n for n in notes if n == folder or n.startswith(folder_prefix)]
+        log.info(f"Filtered to folder '{folder}' — {len(notes)} notes")
     log.info(f"Starting summary generation — {len(notes)} notes in vault")
     if enable_temp_check:
         log.info(f"Disk temperature monitor active (limit {config.disk_temp_limit}°C)")

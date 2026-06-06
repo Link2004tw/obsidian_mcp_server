@@ -177,9 +177,15 @@ def delete_note(path: str) -> bool:
         return False
 
 
-def run_chunking():
-    """Phase 1: chunk + embed + store all notes. No LLM calls."""
-    notes = obsidian_client.list_all_notes()
+def run_chunking(folder: str | None = None):
+    """Phase 1: chunk + embed + store all notes (or a folder). No LLM calls."""
+    all_notes = obsidian_client.list_all_notes()
+    notes = all_notes
+    if folder:
+        folder_prefix = folder.strip("/").rstrip("/") + "/"
+        notes = [n for n in all_notes if n == folder or n.startswith(folder_prefix)]
+        log.info(f"Filtered to folder '{folder}' — {len(notes)}/{len(all_notes)} notes")
+
     log.info(f"Starting chunking — {len(notes)} notes found")
 
     hash_map = utils.load_hash_map()
@@ -191,6 +197,15 @@ def run_chunking():
         log.info(f"Built mtime map from ChromaDB with {len(mtime_map)} entries")
     else:
         log.info(f"Loaded {len(mtime_map)} mtime entries from disk")
+
+    # When folder-scoped, create filtered views for change detection
+    if folder:
+        folder_prefix = folder.strip("/").rstrip("/") + "/"
+        _hash_map = {k: v for k, v in hash_map.items() if k.startswith(folder_prefix)}
+        _mtime_map = {k: v for k, v in mtime_map.items() if k.startswith(folder_prefix)}
+    else:
+        _hash_map = hash_map
+        _mtime_map = mtime_map
 
     indexed = 0
     skipped = 0
@@ -217,7 +232,7 @@ def run_chunking():
                     with _read_lock:
                         all_contents[path] = raw
                         content_hashes[path] = current_hash
-                        stored_hash = hash_map.get(path)
+                        stored_hash = _hash_map.get(path)
                         if stored_hash and stored_hash == current_hash:
                             unchanged_count += 1
                         else:
@@ -225,7 +240,7 @@ def run_chunking():
                 if completed_idx % _read_log_interval == 0 or completed_idx == total_notes:
                     log.info(f"Read {completed_idx}/{total_notes} notes")
 
-        deleted = [p for p in hash_map if p not in notes]
+        deleted = [p for p in _hash_map if p not in notes]
         log.info(f"Read {len(notes)} notes — {changed_count} changed, "
                  f"{unchanged_count} unchanged, {len(deleted)} deleted")
 
@@ -233,7 +248,7 @@ def run_chunking():
         links_cache: dict[str, list[str]] = {}
         graph_total = len(deleted) + sum(
             1 for p in notes
-            if content_hashes.get(p) != hash_map.get(p) and all_contents.get(p) is not None
+            if content_hashes.get(p) != _hash_map.get(p) and all_contents.get(p) is not None
         )
         graph_done = 0
         _graph_log_interval = max(1, graph_total // 4)
@@ -247,7 +262,7 @@ def run_chunking():
             content = all_contents.get(path)
             if content is None:
                 continue
-            stored_hash = hash_map.get(path)
+            stored_hash = _hash_map.get(path)
             current_hash = content_hashes.get(path)
             if stored_hash and current_hash and stored_hash == current_hash:
                 continue
@@ -268,14 +283,14 @@ def run_chunking():
         changed_paths: list[str] = []
         new_paths: set[str] = set()
         for path in notes:
-            stored_hash = hash_map.get(path)
+            stored_hash = _hash_map.get(path)
             current_hash = content_hashes.get(path)
             is_new = stored_hash is None
             if stored_hash and current_hash and stored_hash == current_hash:
                 unchanged += 1
                 log.debug(f"Skipped (hash unchanged): {path}")
                 continue
-            if utils._should_skip_by_mtime(path, mtime_map):
+            if utils._should_skip_by_mtime(path, _mtime_map):
                 unchanged += 1
                 log.debug(f"Skipped (mtime unchanged): {path}")
                 continue
@@ -403,8 +418,12 @@ def run_chunking():
         interrupted = True
         log.warning("Interrupted — saving state...")
 
-    known_paths = set(all_contents.keys())
-    stale = [p for p in hash_map if p not in known_paths]
+    if folder:
+        # Partial index: only GC stale entries within the folder scope
+        stale = [p for p in _hash_map if p not in all_contents]
+    else:
+        known_paths = set(all_contents.keys())
+        stale = [p for p in hash_map if p not in known_paths]
     if stale:
         for p in stale:
             del hash_map[p]

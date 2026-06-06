@@ -101,6 +101,16 @@ def save_cache() -> None:
     log.info(f"Entity cache saved — {len(_entity_cache)} entries")
 
 
+def clear_cache_for_hash(content_hash: str) -> None:
+    """Remove a single entry from the entity cache by content hash.
+
+    This forces the next extraction for the same content to re-call the LLM
+    rather than returning a cached result.
+    """
+    with _entity_cache_lock:
+        _entity_cache.pop(content_hash, None)
+
+
 def _extract_entities_cached(
     sanitized: str, path: str, content_hash: str | None
 ) -> tuple[list[dict], list[dict], str]:

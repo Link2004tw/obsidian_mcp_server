@@ -115,9 +115,13 @@ def _reconcile_cached_entities_with_graph(content_hashes: dict[str, str]) -> int
     return added
 
 
-def run_entity_extraction(*, force: bool = False, skip_cached: bool = True, enable_temp_check: bool = True):
-    """Phase: extract entities + relationships from all notes."""
+def run_entity_extraction(*, force: bool = False, skip_cached: bool = True, enable_temp_check: bool = True, folder: str | None = None):
+    """Phase: extract entities + relationships from all notes (or a folder)."""
     notes = obsidian_client.list_all_notes()
+    if folder:
+        folder_prefix = folder.strip("/").rstrip("/") + "/"
+        notes = [n for n in notes if n == folder or n.startswith(folder_prefix)]
+        log.info(f"Filtered to folder '{folder}' — {len(notes)} notes")
     log.info(f"Starting entity extraction — {len(notes)} notes in vault")
     log.info(f"LLM model: {config.ollama_chat_model} (embed: {config.ollama_embed_model})")
     if enable_temp_check:

@@ -99,6 +99,16 @@ def save_cache() -> None:
     log.info(f"Summary cache saved — {len(_summary_cache)} entries")
 
 
+def clear_cache_for_hash(content_hash: str) -> None:
+    """Remove a single entry from the summary cache by content hash.
+
+    This forces the next summary generation for the same content to re-call
+    the LLM rather than returning a cached result.
+    """
+    with _summary_cache_lock:
+        _summary_cache.pop(content_hash, None)
+
+
 def _generate_summary_cached(sanitized: str, content_hash: str | None) -> str:
     """Generate a summary via LLM with caching.
 

@@ -3,6 +3,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from .logger import get_logger
+
+log = get_logger("obsidian_ai.config")
+
 # Load .env relative to this file's location, not the CWD
 _env_path = Path(__file__).resolve().parents[2] / ".env"
 load_dotenv(_env_path, override=True)
@@ -84,7 +88,7 @@ def validate(verbose: bool = True) -> list[str]:
         resp.raise_for_status()
         models = [m["name"] for m in resp.json().get("models", [])]
         if verbose:
-            print(f"Ollama at {ollama_base_url} — {len(models)} models available")
+            log.info("Ollama at %s — %d models available", ollama_base_url, len(models))
 
         # Check chat model
         chat_models = [m for m in models if ollama_chat_model in m]
@@ -93,7 +97,8 @@ def validate(verbose: bool = True) -> list[str]:
             hint = f" Available chat models: {suggestions[:5]}" if suggestions else ""
             warnings.append(f"Chat model '{ollama_chat_model}' not found in Ollama.{hint}")
         elif verbose:
-            print(f"Chat model: {ollama_chat_model} {' (matched: ' + str(chat_models[0]) + ')' if chat_models[0] != ollama_chat_model else ''}")
+            matched = f" (matched: {chat_models[0]})" if chat_models[0] != ollama_chat_model else ""
+            log.info("Chat model: %s%s", ollama_chat_model, matched)
 
         # Check embed model
         embed_models = [m for m in models if ollama_embed_model in m]
@@ -102,7 +107,8 @@ def validate(verbose: bool = True) -> list[str]:
             hint = f" Available embed models: {suggestions[:5]}" if suggestions else ""
             warnings.append(f"Embed model '{ollama_embed_model}' not found in Ollama.{hint}")
         elif verbose:
-            print(f"Embed model: {ollama_embed_model} {' (matched: ' + str(embed_models[0]) + ')' if embed_models[0] != ollama_embed_model else ''}")
+            matched = f" (matched: {embed_models[0]})" if embed_models[0] != ollama_embed_model else ""
+            log.info("Embed model: %s%s", ollama_embed_model, matched)
 
     except requests.exceptions.ConnectionError:
         warnings.append(f"Cannot connect to Ollama at {ollama_base_url} — is it running?")
@@ -117,8 +123,8 @@ def validate(verbose: bool = True) -> list[str]:
 
     if warnings:
         for w in warnings:
-            print(f"!  {w}")
+            log.warning(w)
     elif verbose:
-        print("OK — All config checks passed")
+        log.info("All config checks passed")
 
     return warnings

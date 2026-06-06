@@ -1,17 +1,34 @@
 """Todo management tools for the Obsidian MCP server."""
 
+from .. import config
+from .. import indexer
 from .. import todos as _impl
 from ..logger import get_logger, log_error
 from ._shared import _normalize_path
 
 log = get_logger("obsidian_ai.tools.todos")
 
+_TODO_PATH: str | None = None
 
-def ensure_todo_file() -> str:
-    """Create a default todos.md file in the vault if it doesn't exist."""
+
+def _todo_path() -> str:
+    global _TODO_PATH
+    if _TODO_PATH is None:
+        _TODO_PATH = config.todo_file
+    return _TODO_PATH
+
+
+def ensure_todo_file(sync: bool = True) -> str:
+    """Create a default todos.md file in the vault if it doesn't exist.
+
+    Args:
+        sync: if True (default), re-index so changes are reflected in search.
+    """
     log.info("ensure_todo_file")
     try:
         result = _impl.ensure_todos_file_exists()
+        if sync:
+            indexer.index_note(_todo_path())
         log.info(f"ensure_todo_file — {result}")
         return result
     except Exception as e:
@@ -46,7 +63,7 @@ def get_todos(project: str = "", status: str = "", overdue: bool = False, blocke
         return []
 
 
-def add_todo(project: str, task: str, due: str = "", priority: str = "", tags: list[str] | None = None) -> dict:
+def add_todo(project: str, task: str, due: str = "", priority: str = "", tags: list[str] | None = None, sync: bool = True) -> dict:
     """Add a new todo task to a project.
 
     Args:
@@ -55,6 +72,7 @@ def add_todo(project: str, task: str, due: str = "", priority: str = "", tags: l
         due: optional due date in ``YYYY-MM-DD`` format.
         priority: ``"high"``, ``"medium"``, or ``"low"``.
         tags: optional list of tag strings.
+        sync: if True (default), re-index so changes are reflected in search.
 
     Returns:
         The created todo dict with its assigned id.
@@ -68,6 +86,8 @@ def add_todo(project: str, task: str, due: str = "", priority: str = "", tags: l
             priority=priority if priority else None,
             tags=tags or None,
         )
+        if sync:
+            indexer.index_note(_todo_path())
         log.info(f"add_todo — created {todo['id']}")
         return todo
     except Exception as e:
@@ -75,11 +95,12 @@ def add_todo(project: str, task: str, due: str = "", priority: str = "", tags: l
         return {"error": str(e)}
 
 
-def complete_todo(todo_id: str) -> dict:
+def complete_todo(todo_id: str, sync: bool = True) -> dict:
     """Mark a todo as completed by its id.
 
     Args:
         todo_id: the id of the todo (returned by get_todos or add_todo).
+        sync: if True (default), re-index so changes are reflected in search.
 
     Returns:
         The updated todo dict, or an error dict if the id is not found.
@@ -89,6 +110,8 @@ def complete_todo(todo_id: str) -> dict:
         todo = _impl.complete_todo(todo_id)
         if todo is None:
             return {"error": f"Todo not found: {todo_id}"}
+        if sync:
+            indexer.index_note(_todo_path())
         log.info(f"complete_todo — {todo_id} done")
         return todo
     except Exception as e:
@@ -96,7 +119,7 @@ def complete_todo(todo_id: str) -> dict:
         return {"error": str(e)}
 
 
-def update_todo(todo_id: str, task: str = "", due: str = "", priority: str = "", tags: list[str] | None = None, project: str = "", status: str = "") -> dict:
+def update_todo(todo_id: str, task: str = "", due: str = "", priority: str = "", tags: list[str] | None = None, project: str = "", status: str = "", sync: bool = True) -> dict:
     """Update one or more fields of an existing todo.
 
     Args:
@@ -107,6 +130,7 @@ def update_todo(todo_id: str, task: str = "", due: str = "", priority: str = "",
         tags: new tags list (leave empty to keep current).
         project: move to a different project (leave empty to keep current).
         status: ``"pending"`` or ``"completed"`` (leave empty to keep current).
+        sync: if True (default), re-index so changes are reflected in search.
 
     Returns:
         The updated todo dict, or an error dict if the id is not found.
@@ -129,6 +153,8 @@ def update_todo(todo_id: str, task: str = "", due: str = "", priority: str = "",
         todo = _impl.update_todo(todo_id, **kwargs)
         if todo is None:
             return {"error": f"Todo not found: {todo_id}"}
+        if sync:
+            indexer.index_note(_todo_path())
         log.info(f"update_todo — {todo_id} updated")
         return todo
     except Exception as e:
@@ -136,11 +162,12 @@ def update_todo(todo_id: str, task: str = "", due: str = "", priority: str = "",
         return {"error": str(e)}
 
 
-def delete_todo(todo_id: str) -> dict:
+def delete_todo(todo_id: str, sync: bool = True) -> dict:
     """Delete a todo by its id.
 
     Args:
         todo_id: the id of the todo to delete.
+        sync: if True (default), re-index so changes are reflected in search.
 
     Returns:
         A dict with ``success: true`` or ``success: false`` with an error message.
@@ -150,6 +177,8 @@ def delete_todo(todo_id: str) -> dict:
         ok = _impl.delete_todo(todo_id)
         if not ok:
             return {"success": False, "error": f"Todo not found: {todo_id}"}
+        if sync:
+            indexer.index_note(_todo_path())
         log.info(f"delete_todo — {todo_id} deleted")
         return {"success": True}
     except Exception as e:
@@ -157,11 +186,17 @@ def delete_todo(todo_id: str) -> dict:
         return {"success": False, "error": str(e)}
 
 
-def sync_todos() -> dict:
-    """Recalculate todo counts in the todos.md frontmatter and rewrite the file."""
+def sync_todos(sync: bool = True) -> dict:
+    """Recalculate todo counts in the todos.md frontmatter and rewrite the file.
+
+    Args:
+        sync: if True (default), re-index so changes are reflected in search.
+    """
     log.info("sync_todos")
     try:
         result = _impl.sync_todos()
+        if sync:
+            indexer.index_note(_todo_path())
         log.info(f"sync_todos — {result}")
         return result
     except Exception as e:
@@ -209,7 +244,7 @@ def get_todos_by_priority(priority: str, project: str = "", status: str = "") ->
         return []
 
 
-def add_todo_from_natural_language(text: str) -> dict:
+def add_todo_from_natural_language(text: str, sync: bool = True) -> dict:
     """Parse a natural language description into a structured todo using the LLM.
 
     Example: ``"buy groceries tomorrow high priority"`` → creates a todo
@@ -217,6 +252,7 @@ def add_todo_from_natural_language(text: str) -> dict:
 
     Args:
         text: free-form task description (e.g. ``"review PR by friday"``).
+        sync: if True (default), re-index so changes are reflected in search.
 
     Returns:
         The created todo dict with its assigned id.
@@ -224,6 +260,8 @@ def add_todo_from_natural_language(text: str) -> dict:
     log.info(f"add_todo_from_natural_language — {text[:80]}")
     try:
         todo = _impl.add_todo_from_natural_language(text)
+        if sync:
+            indexer.index_note(_todo_path())
         log.info(f"add_todo_from_natural_language — created {todo['id']}")
         return todo
     except Exception as e:
@@ -353,12 +391,14 @@ def get_notes_for_todo(todo_id: str) -> list[str]:
         return []
 
 
-def link_todo_to_notes(todo_id: str, note_paths: list[str]) -> dict:
+def link_todo_to_notes(todo_id: str, note_paths: list[str], sync: bool = True) -> dict:
     """Link a todo to one or more notes by appending [[wiki-links]] to its task text.
 
     Args:
         todo_id: the id of the todo to update.
         note_paths: list of vault-relative note paths to link (not full filesystem paths).
+        sync: if True (default), re-index the linked notes and todos.md so
+            changes are reflected in search.
 
     Returns:
         The updated todo dict.
@@ -366,7 +406,12 @@ def link_todo_to_notes(todo_id: str, note_paths: list[str]) -> dict:
     note_paths = [_normalize_path(p) for p in note_paths]
     log.info(f"link_todo_to_notes — {todo_id} -> {note_paths}")
     try:
-        return _impl.link_todo_to_notes(todo_id, note_paths)
+        result = _impl.link_todo_to_notes(todo_id, note_paths)
+        if sync:
+            for np in note_paths:
+                indexer.index_note(np)
+            indexer.index_note(_todo_path())
+        return result
     except Exception as e:
         log_error(log, "link_todo_to_notes FAILED", exc=e)
         return {"error": str(e)}

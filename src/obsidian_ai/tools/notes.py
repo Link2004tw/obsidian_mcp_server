@@ -21,7 +21,7 @@ from ..frontmatter import remove_tags as fm_remove_tags
 from ..frontmatter import set_tags as fm_set_tags
 from ..frontmatter import validate as fm_validate
 from ..logger import get_logger, log_error
-from ._shared import _normalize_path
+from ._shared import _find_notes_mentioning, _normalize_path
 
 log = get_logger("obsidian_ai.tools.notes")
 
@@ -43,12 +43,13 @@ def read_note(path: str) -> str:
         return f"Error: {e}"
 
 
-def write_note(path: str, content: str) -> str:
+def write_note(path: str, content: str, sync: bool = True) -> str:
     """Create or overwrite a note with the given content.
 
     Args:
         path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
         content: Markdown content to write.
+        sync: if True (default), re-index the note so it's immediately searchable.
     """
     path = _normalize_path(path)
     log.info(f"write_note — {path} — {len(content)} chars")
@@ -57,6 +58,8 @@ def write_note(path: str, content: str) -> str:
         log.warning(f"write_note — frontmatter warnings for {path}: {warnings}")
     try:
         obsidian_client.put_note(path, content)
+        if sync:
+            indexer.index_note(path)
         if warnings:
             return f"Written: {path}\nFrontmatter warnings:\n" + "\n".join(f"  • {w}" for w in warnings)
         return f"Written: {path}"
@@ -180,12 +183,13 @@ def read_note_by_title(title: str, folder_path: str = "") -> str:
         return f"Error: {e}"
 
 
-def add_tags(path: str, tags: list[str]) -> str:
+def add_tags(path: str, tags: list[str], sync: bool = True) -> str:
     """Add tags to a note's YAML frontmatter. Creates frontmatter if absent.
 
     Args:
         path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
         tags: list of tag strings to add.
+        sync: if True (default), re-index the note so changes are reflected in search.
     """
     path = _normalize_path(path)
     log.info(f"add_tags — {path} — tags={tags}")
@@ -193,6 +197,8 @@ def add_tags(path: str, tags: list[str]) -> str:
         content = obsidian_client.get_note(path)
         new_content = fm_add_tags(content, tags)
         obsidian_client.put_note(path, new_content)
+        if sync:
+            indexer.index_note(path)
         meta, _ = fm_parse(new_content)
         log.info(f"add_tags — {path} — final tags={meta.get('tags', [])}")
         return f"Tags added to {path}: {meta.get('tags', [])}"
@@ -201,12 +207,13 @@ def add_tags(path: str, tags: list[str]) -> str:
         return f"Error: {e}"
 
 
-def remove_tags(path: str, tags: list[str]) -> str:
+def remove_tags(path: str, tags: list[str], sync: bool = True) -> str:
     """Remove specific tags from a note's YAML frontmatter.
 
     Args:
         path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
         tags: list of tags to remove.
+        sync: if True (default), re-index the note so changes are reflected in search.
     """
     path = _normalize_path(path)
     log.info(f"remove_tags — {path} — tags={tags}")
@@ -214,6 +221,8 @@ def remove_tags(path: str, tags: list[str]) -> str:
         content = obsidian_client.get_note(path)
         new_content = fm_remove_tags(content, tags)
         obsidian_client.put_note(path, new_content)
+        if sync:
+            indexer.index_note(path)
         meta, _ = fm_parse(new_content)
         log.info(f"remove_tags — {path} — final tags={meta.get('tags', [])}")
         return f"Tags removed from {path}. Remaining: {meta.get('tags', [])}"
@@ -222,12 +231,13 @@ def remove_tags(path: str, tags: list[str]) -> str:
         return f"Error: {e}"
 
 
-def set_tags(path: str, tags: list[str]) -> str:
+def set_tags(path: str, tags: list[str], sync: bool = True) -> str:
     """Replace all tags on a note with the given list.
 
     Args:
         path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
         tags: new list of tags (replaces all existing).
+        sync: if True (default), re-index the note so changes are reflected in search.
     """
     path = _normalize_path(path)
     log.info(f"set_tags — {path} — tags={tags}")
@@ -235,6 +245,8 @@ def set_tags(path: str, tags: list[str]) -> str:
         content = obsidian_client.get_note(path)
         new_content = fm_set_tags(content, tags)
         obsidian_client.put_note(path, new_content)
+        if sync:
+            indexer.index_note(path)
         meta, _ = fm_parse(new_content)
         log.info(f"set_tags — {path} — final tags={meta.get('tags', [])}")
         return f"Tags set on {path}: {meta.get('tags', [])}"
@@ -243,8 +255,14 @@ def set_tags(path: str, tags: list[str]) -> str:
         return f"Error: {e}"
 
 
-def batch_tag_notes(note_paths: list[str], tags: list[str]) -> dict[str, str]:
-    """Add tags to multiple notes at once. Returns ``dict[path, result_message]``."""
+def batch_tag_notes(note_paths: list[str], tags: list[str], sync: bool = True) -> dict[str, str]:
+    """Add tags to multiple notes at once. Returns ``dict[path, result_message]``.
+
+    Args:
+        note_paths: list of vault-relative note paths.
+        tags: list of tags to add.
+        sync: if True (default), re-index each note so changes are reflected in search.
+    """
     log.info("batch_tag_notes — %d notes, tags=%s", len(note_paths), tags)
     results: dict[str, str] = {}
     for path in note_paths:
@@ -252,6 +270,8 @@ def batch_tag_notes(note_paths: list[str], tags: list[str]) -> dict[str, str]:
             content = obsidian_client.get_note(path)
             new_content = fm_add_tags(content, tags)
             obsidian_client.put_note(path, new_content)
+            if sync:
+                indexer.index_note(path)
             meta, _ = fm_parse(new_content)
             results[path] = f"Tags added: {meta.get('tags', [])}"
         except Exception as e:
@@ -260,12 +280,13 @@ def batch_tag_notes(note_paths: list[str], tags: list[str]) -> dict[str, str]:
     return results
 
 
-def create_backlink(path_a: str, path_b: str) -> str:
+def create_backlink(path_a: str, path_b: str, sync: bool = True) -> str:
     """Create mutual [[backlinks]] between two notes.
 
     Args:
         path_a: vault-relative path to the first note.
         path_b: vault-relative path to the second note.
+        sync: if True (default), re-index both notes so changes are reflected in search.
     """
     path_a = _normalize_path(path_a)
     path_b = _normalize_path(path_b)
@@ -286,23 +307,52 @@ def create_backlink(path_a: str, path_b: str) -> str:
             content_b = content_b.rstrip() + f"\n\n{link_to_a}"
             obsidian_client.put_note(path_b, content_b)
 
+        if sync:
+            indexer.index_note(path_a)
+            indexer.index_note(path_b)
+
         return f"Linked: {path_a} <-> {path_b}"
     except Exception as e:
         log_error(log, f"create_backlink FAILED: {path_a} <-> {path_b}", exc=e)
         return f"Error: {e}"
 
 
-def sync_index() -> str:
-    """Re-run the full indexer pipeline. Clears the embedding cache and BM25 index."""
-    log.info("sync_index — starting")
+def sync_index(folder: str | None = None, subject: str | None = None) -> str:
+    """Re-run the full indexer pipeline. Clears the embedding cache and BM25 index.
+
+    Args:
+        folder: If set, only re-index notes under this vault-relative folder path.
+               Pass ``None`` (omit) to re-index the entire vault.
+        subject: If set, find all notes mentioning this entity and force-re-index
+                them (re-extract entities, relationships, and summaries via LLM).
+                Mutually exclusive with ``folder``.
+    """
+    if subject:
+        log.info(f"sync_index — re-indexing notes mentioning subject={subject!r}")
+        try:
+            found = entity_store.search(subject)
+            paths = sorted(set(n["path"] for n in found))
+            if not paths:
+                return f"No notes found mentioning '{subject}'."
+            count = 0
+            for path in paths:
+                if indexer.index_note(path, force=True):
+                    count += 1
+            log.info(f"sync_index — subject={subject!r}: {count}/{len(paths)} notes re-indexed")
+            return f"Re-indexed {count} notes mentioning '{subject}'."
+        except Exception as e:
+            log_error(log, f"sync_index FAILED (subject={subject!r})", exc=e)
+            return f"Error: {e}"
+
+    log.info(f"sync_index — starting{' (folder=' + folder + ')' if folder else ''}")
     try:
-        indexer.run_index()
+        indexer.run_index(folder=folder)
         entity_store.rebuild()
         llm_client.clear_embed_cache()
         keyword_search.ensure_index()  # force BM25 rebuild
         log.info("sync_index — caches cleared")
         log.info("sync_index — complete")
-        return "Index sync complete. Caches cleared. Check indexer.log for details."
+        return f"Index sync complete{' for folder: ' + folder if folder else ''}. Check indexer.log for details."
     except Exception as e:
         log_error(log, "sync_index FAILED", exc=e)
         return f"Error: {e}"
@@ -347,6 +397,8 @@ def add_note_to_subject(
     title: str,
     content: str,
     tags: list[str] | None = None,
+    sync: bool = True,
+    reindex_matches: bool = True,
 ) -> str:
     """Add a note to a subject, auto-linking it into the wiki-link graph.
 
@@ -370,6 +422,12 @@ def add_note_to_subject(
             — do not include a ``---`` header yourself.
         tags: optional extra tags (e.g. ``["poem", "church"]``). The subject
             tag is added automatically.
+        sync: if True (default), re-index the new note (and hub if newly created)
+            so they are immediately searchable. Set to False when adding
+            multiple notes to batch indexing into a single sync call.
+        reindex_matches: if True (default), scan the vault for notes that mention
+            the subject name and force-re-index them so they pick up the new
+            entity from the LLM.
 
     Returns:
         A confirmation message with the note path.
@@ -446,6 +504,21 @@ def add_note_to_subject(
             graph_store.add_entity_edge("Concept", safe_subject, note_path)
             graph_store.flush()
 
+        # 7. Re-index the new note (and hub if newly created) so they're searchable
+        if sync:
+            indexer.index_note(note_path)
+            if not hub_exists:
+                indexer.index_note(hub_path)
+
+        # 8. Scan vault for existing notes mentioning the subject and force-re-index
+        reindexed = 0
+        if reindex_matches:
+            for p in _find_notes_mentioning(safe_subject):
+                if p == note_path or p == hub_path:
+                    continue
+                if indexer.index_note(p, force=True):
+                    reindexed += 1
+
         tag_summary = ", ".join(all_tags)
         log.info(f"add_note_to_subject — written: {note_path}, tags=[{tag_summary}]")
         lines = [
@@ -455,6 +528,8 @@ def add_note_to_subject(
             f"  Graph:      linked to hub ({hub_path}) via [[wiki-links]]",
             f"  Entity:     \"{safe_subject}\" registered as Concept",
         ]
+        if reindexed:
+            lines.append(f"  Re-indexed: {reindexed} existing notes mentioning this subject")
         return "\n".join(lines)
 
     except Exception as e:

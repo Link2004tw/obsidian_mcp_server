@@ -426,6 +426,58 @@ class EntityStore:
             "mention_count": len(record["mentions"]),
         }
 
+    def add_aliases(self, name: str, new_aliases: list[str]) -> dict | None:
+        """Add aliases to an existing entity. Returns updated record or None if not found.
+
+        Thread-safe. Persists immediately.
+        """
+        key = _normalize(name)
+        with self._lock:
+            record = self._data.get(key)
+            if record is None:
+                canonical_key = self._alias_map.get(key)
+                if canonical_key:
+                    record = self._data.get(canonical_key)
+            if record is None:
+                return None
+            for alias in new_aliases:
+                alias_str = str(alias).strip()
+                if alias_str and alias_str not in record["aliases"]:
+                    record["aliases"].append(alias_str)
+                    self._register_alias(record["canonical"], alias_str)
+        self.save()
+        return {
+            "entity_name": record["canonical"],
+            "entity_type": record["type"],
+            "aliases": list(record["aliases"]),
+            "mention_count": len(record["mentions"]),
+        }
+
+    def change_entity_type(self, name: str, new_type: str) -> dict | None:
+        """Change the type of an existing entity. Returns updated record or None if not found.
+
+        Thread-safe. Persists immediately.
+        """
+        if new_type not in _ENTITY_TYPES:
+            new_type = "Concept"
+        key = _normalize(name)
+        with self._lock:
+            record = self._data.get(key)
+            if record is None:
+                canonical_key = self._alias_map.get(key)
+                if canonical_key:
+                    record = self._data.get(canonical_key)
+            if record is None:
+                return None
+            record["type"] = new_type
+        self.save()
+        return {
+            "entity_name": record["canonical"],
+            "entity_type": record["type"],
+            "aliases": list(record["aliases"]),
+            "mention_count": len(record["mentions"]),
+        }
+
     # ── Rebuild ──────────────────────────────────────────────────────
 
     def clear(self) -> None:
@@ -668,3 +720,13 @@ def list_entities(entity_type: str | None = None, n: int = 1000) -> list[dict]:
 
 def add_manual_entity(name: str, entity_type: str, aliases: list[str] | None = None) -> dict:
     return _get_store().add_manual_entity(name, entity_type, aliases=aliases)
+
+
+def add_aliases(name: str, new_aliases: list[str]) -> dict | None:
+    """Add aliases to an existing entity. Returns updated record or None if not found."""
+    return _get_store().add_aliases(name, new_aliases)
+
+
+def change_entity_type(name: str, new_type: str) -> dict | None:
+    """Change the type of an existing entity. Returns updated record or None if not found."""
+    return _get_store().change_entity_type(name, new_type)

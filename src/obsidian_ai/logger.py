@@ -21,7 +21,7 @@ def get_logger(name: str, log_file: str | None = None, level: int = logging.INFO
     if not logger.handlers:
         formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
 
-        console = logging.StreamHandler(sys.stdout)
+        console = logging.StreamHandler(sys.stderr)
         console.setLevel(level)
         console.setFormatter(formatter)
         logger.addHandler(console)
