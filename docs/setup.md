@@ -3,10 +3,12 @@
 ## Prerequisites
 
 - Python 3.11+
-- [Ollama](https://ollama.com/) installed and running
 - [Obsidian](https://obsidian.md/) with the [Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api) plugin enabled
+- An LLM provider: either [Ollama](https://ollama.com/) (default, local) or an OpenAI-compatible API key
 
-## 1. Install Ollama and pull models
+## 1. Choose and configure an LLM provider
+
+### Option A: Ollama (default, local)
 
 ```bash
 ollama pull nomic-embed-text
@@ -18,6 +20,16 @@ Verify the embedding model works:
 ```bash
 curl http://localhost:11434/api/embeddings -d '{"model": "nomic-embed-text", "prompt": "test"}'
 ```
+
+### Option B: OpenAI or compatible API (Groq, Together, vLLM)
+
+Install the optional `openai` dependency:
+
+```bash
+pip install -e ".[openai]"
+```
+
+Set your API key in `.env` (see Configuration below). No other setup needed.
 
 ## 2. Enable the Obsidian Local REST API plugin
 
@@ -48,16 +60,37 @@ pip install -e .
 
 ## 4. Configure environment variables
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root.
+
+For Ollama (default):
 
 ```env
 OBSIDIAN_HOST=localhost
 OBSIDIAN_PORT=27123
 OBSIDIAN_API_KEY=your_api_key_here
 
+LLM_PROVIDER=ollama
+EMBED_PROVIDER=ollama
+
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_EMBED_MODEL=nomic-embed-text
 OLLAMA_CHAT_MODEL=qwen3:4b
+
+VAULT_PATH=C:/Users/me/your-vault
+CHROMA_PATH=data/chroma_db
+```
+
+For OpenAI / OpenAI-compatible (Groq, Together, vLLM):
+
+```env
+OBSIDIAN_HOST=localhost
+OBSIDIAN_PORT=27123
+OBSIDIAN_API_KEY=your_api_key_here
+
+LLM_PROVIDER=openai
+EMBED_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+# OPENAI_BASE_URL=https://api.groq.com/openai/v1  # swap for Groq
 
 VAULT_PATH=C:/Users/me/your-vault
 CHROMA_PATH=data/chroma_db
@@ -68,9 +101,15 @@ CHROMA_PATH=data/chroma_db
 | `OBSIDIAN_HOST` | `localhost` | Obsidian REST API hostname |
 | `OBSIDIAN_PORT` | `27123` | Obsidian REST API port |
 | `OBSIDIAN_API_KEY` | *(required)* | Bearer token from the plugin |
+| `LLM_PROVIDER` | `ollama` | Chat provider: `ollama` or `openai` |
+| `EMBED_PROVIDER` | `ollama` | Embedding provider: `ollama` or `openai` |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
-| `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Embedding model name |
-| `OLLAMA_CHAT_MODEL` | `qwen3:4b` | Chat/LLM model name |
+| `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Ollama embedding model name |
+| `OLLAMA_CHAT_MODEL` | `qwen3:4b` | Ollama chat/LLM model name |
+| `OPENAI_API_KEY` | — | API key for OpenAI / compatible APIs |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Base URL (swap for Groq, Together, vLLM) |
+| `OPENAI_CHAT_MODEL` | `gpt-4o-mini` | OpenAI chat model name |
+| `OPENAI_EMBED_MODEL` | `text-embedding-3-small` | OpenAI embedding model name |
 | `VAULT_PATH` | *(required for watcher)* | Absolute path to the Obsidian vault (e.g., `C:/Users/me/vault`) |
 | `CHROMA_PATH` | `data/chroma_db` | ChromaDB storage path |
 | `DATA_DIR` | `data` | Override data storage root |
@@ -80,7 +119,7 @@ CHROMA_PATH=data/chroma_db
 | `DISK_TEMP_LIMIT` | `80` | Disk temperature limit (°C) |
 | `DISK_TEMP_CHECK_INTERVAL` | `30` | Disk temp check interval (seconds) |
 | `READ_WORKERS` | `2` | Parallel note readers for initial fetch |
-| `LLM_CHAT_CONCURRENCY` | `1` | Max concurrent Ollama chat calls during indexing |
+| `LLM_CHAT_CONCURRENCY` | `1` | Max concurrent chat calls during indexing |
 | `INDEX_BATCH_SIZE` | `50` | Notes per index batch |
 | `LLM_CALL_DELAY` | `0.5` | Delay between LLM calls (seconds) |
 | `EMBED_WORKER_FLOOR` | `1` | Min embedding worker threads |

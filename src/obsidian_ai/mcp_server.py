@@ -33,6 +33,7 @@ from .tools.graph import (  # noqa: F401
     get_orphan_notes,
     get_ranking_weights,
     get_shortest_path,
+    import_entities,
     list_entities,
     merge_entities,
     multi_hop_traversal,

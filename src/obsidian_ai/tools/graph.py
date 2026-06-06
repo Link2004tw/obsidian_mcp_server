@@ -6,6 +6,7 @@ import os
 from .. import (
     chroma_store,
     entity_relations,
+    entity_resolver,
     entity_store,
     graph_store,
     indexer,
@@ -30,21 +31,20 @@ def search_entities(
     n: int = 10,
     use_graph: bool = False,
 ) -> list[dict]:
-    """Find notes mentioning a specific entity.
+    """Find notes that mention a specific entity in the vault. Use this when the user asks about a person, project, technology, concept, or any named entity — it performs entity-aware lookup rather than general semantic search.
 
-    Uses the entity index store for fast lookups, with ChromaDB fallback
-    via the ``entities_str`` metadata field.
+    Searches the entity index first, then falls back to ChromaDB metadata matching. Optionally expands results by following wiki-links from matching notes.
 
     Args:
         entity_name: name of the entity to search for (e.g. ``"ESP32"``, ``"Alice"``).
         entity_type: optional filter (e.g. ``"Person"``, ``"Hardware"``). One of:
-                     Person, Project, Hardware, Technology, Location, Concept, Event.
-        n: max results to return.
+                     Person, Project, Hardware, Technology, Location, Concept, Event. Default: ``None`` (all types).
+        n: maximum number of results to return. Default: 10.
         use_graph: if True, also traverse wiki-links from matching notes to
-                   find connected notes that may mention the entity indirectly.
+                   find connected notes that may mention the entity indirectly. Default: False.
 
     Returns:
-        List of dicts with path, title, entity_name, entity_type, snippet, confidence.
+        List of dicts, each with keys: path, title, entity_name, entity_type, snippet, confidence.
     """
     log.info(f"search_entities — {entity_name}, type={entity_type}, n={n}, use_graph={use_graph}")
     try:
@@ -101,13 +101,13 @@ def search_entities(
 
 
 def get_note_entities(path: str) -> list[dict]:
-    """Return all entities found in a specific note during indexing.
+    """List all entities extracted from a specific note during indexing. Use this when the user asks what entities (people, projects, concepts, etc.) were found in a given note.
 
     Args:
-        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
+        path: vault-relative path to the note (e.g. ``"Folder/Note.md"`` — not a full filesystem path).
 
     Returns:
-        List of dicts with entity_name, entity_type, confidence.
+        List of dicts, each with keys: entity_name, entity_type, confidence.
     """
     path = _normalize_path(path)
     log.info(f"get_note_entities — {path}")
@@ -121,26 +121,22 @@ def get_note_entities(path: str) -> list[dict]:
 
 
 def get_entity_types() -> list[str]:
-    """Return all available entity types used for classification.
+    """List all entity type labels used for entity classification in the vault. Use this when the user wants to know what categories (Person, Project, Hardware, etc.) are available for filtering entity searches.
 
     Returns:
-        List of entity type strings.
+        List of entity type strings (e.g. ``["Person", "Project", "Hardware", "Technology", "Location", "Concept", "Event"]``).
     """
     return entity_store.entity_types()
 
 
 def get_entity_aliases(name: str) -> str:
-    """Return all alias information for a given entity.
-
-    Shows canonical name, entity type, alias list (both LLM-generated
-    and manual), and total mention count across the vault.
+    """Show the canonical name, type, aliases, and mention count for an entity. Use this when the user asks about alternative names for a person, project, or concept, or when you need to resolve an ambiguous entity reference.
 
     Args:
         name: entity name — canonical or alias (e.g. ``"Maria"`` or ``"Her"``).
 
     Returns:
-        A formatted string with canonical name, type, aliases, and mention count,
-        or an error message if the entity is not found.
+        A formatted human-readable string showing the canonical name, entity type, list of aliases (both LLM-generated and manually added), and total mention count across the vault. Returns an error message if the entity is not found.
     """
     log.info(f"get_entity_aliases — {name}")
     try:
@@ -162,18 +158,16 @@ def get_entity_aliases(name: str) -> str:
 
 
 def merge_entities(primary: str, secondary: str) -> str:
-    """Merge two entity records, keeping *primary* as the canonical name.
+    """Merge two entity records into one, keeping *primary* as the canonical name and deleting the secondary. Use this when the user identifies duplicate entities (e.g., the same person indexed under slightly different names) that need to be consolidated.
 
-    Combines mention lists, merges aliases, and removes the secondary
-    entity record. Useful for cleaning up duplicate entities or merging
-    variants that weren't auto-detected as aliases.
+    Combines mention lists, merges aliases, and removes the secondary entity record.
 
     Args:
-        primary: the entity name to keep (canonical).
+        primary: the entity name to keep as the canonical name.
         secondary: the entity name to merge into primary and then delete.
 
     Returns:
-        Confirmation message with merged entity details, or an error.
+        A formatted confirmation string with merged entity details (canonical name, type, aliases, mention count), or an error message if one or both entities are not found.
     """
     log.info(f"merge_entities — primary={primary}, secondary={secondary}")
     try:
@@ -194,20 +188,68 @@ def merge_entities(primary: str, secondary: str) -> str:
         return f"Error: {e}"
 
 
-def entity_timeline(name: str, date_from: str | None = None,
-                    date_to: str | None = None) -> str:
-    """Return a chronological timeline of events for an entity.
+def import_entities(data: str, dedup_config: str | None = None) -> str:
+    """Import entities and relations from another Obsidian vault and merge them into the current index. Use this when the user wants to transfer entity data between vaults.
 
-    Timeline entries are extracted by the LLM during indexing and include
-    dates, event descriptions, and note references.
+    Accepts a JSON string of entities (and optionally relations) exported from another vault. Entities are matched and merged using configurable dedup strategies: exact name match, alias overlap, and fuzzy similarity.
 
     Args:
-        name: entity name (canonical or alias), e.g. ``"Alice"``.
-        date_from: optional lower date bound (inclusive), e.g. ``"2024-01"``.
-        date_to: optional upper date bound (inclusive), e.g. ``"2024-12"``.
+        data: JSON string with ``entities`` dict and optional ``relations`` list.
+            Format::
+                {
+                  "entities": {
+                    "normalized_key": {
+                      "canonical": "EntityName",
+                      "type": "Person",
+                      "aliases": ["alt_name"],
+                      "mentions": [{"path": "...", "chunk_idx": 0, "context": "...", "confidence": 0.95}]
+                    }
+                  },
+                  "relations": [
+                    {"source": "EntityName", "type": "works_on", "target": "ProjectX", "confidence": 0.9}
+                  ]
+                }
+        dedup_config: optional JSON string overriding matching thresholds.
+            Format::
+                {"exact_match": true, "alias_match": true, "fuzzy_threshold": 0.85, "strategy": "auto"}
+            Default: ``None`` (uses default thresholds).
 
     Returns:
-        A formatted timeline or an error message if no entries are found.
+        A formatted summary string showing the total incoming entities, how many were merged, added, skipped, and how many relations were added.
+    """
+    log.info("import_entities")
+    try:
+        import json
+        parsed = json.loads(data)
+        config_parsed = json.loads(dedup_config) if dedup_config else None
+        resolver = entity_resolver.EntityResolver(dedup_config=config_parsed)
+        summary = resolver.resolve(parsed)
+        lines = [
+            f"Entity import complete — {summary['total_incoming']} incoming entities",
+            f"  Merged:   {summary['merged']}",
+            f"  Added:    {summary['added']}",
+            f"  Skipped:  {summary['skipped']}",
+            f"  Relations added: {summary['relations_added']}",
+        ]
+        return "\n".join(lines)
+    except Exception as e:
+        log_error(log, "import_entities FAILED", exc=e)
+        return f"Error: {e}"
+
+
+def entity_timeline(name: str, date_from: str | None = None,
+                    date_to: str | None = None) -> str:
+    """Show a chronological timeline of events linked to an entity. Use this when the user asks "what happened with X" or wants a chronological summary of events involving a person, project, or concept.
+
+    Timeline entries are extracted by the LLM during indexing and include dates, event descriptions, and note references.
+
+    Args:
+        name: entity name — canonical or alias (e.g. ``"Alice"``).
+        date_from: optional lower date bound (inclusive), e.g. ``"2024-01"``. Default: None (no lower bound).
+        date_to: optional upper date bound (inclusive), e.g. ``"2024-12"``. Default: None (no upper bound).
+
+    Returns:
+        A formatted human-readable string listing the timeline entries chronologically, each with date, event description, and source note title. Returns an error message if the entity is not found or has no timeline entries.
     """
     log.info(f"entity_timeline — name={name}, from={date_from}, to={date_to}")
     try:
@@ -232,26 +274,22 @@ def related_entities(
     relation_type: str | None = None,
     depth: int = 1,
 ) -> str:
-    """Find entities related to a given entity via the relationship graph.
+    """Discover entities connected to a given entity via the relationship graph. Use this when the user asks "what is X related to", "who works on X", or wants to explore connections between people, projects, and concepts.
 
-    Traverses the entity-relationship graph between entity records in
-    the knowledge index. Relationships are extracted during note indexing
-    and include types like ``works_on``, ``uses``, ``part_of``,
-    ``located_in``, ``attends``, ``created_by``, and ``related_to``.
+    Traverses the entity-relationship graph in the knowledge index. Relationships are extracted during note indexing and include types like ``works_on``, ``uses``, ``part_of``, ``located_in``, ``attends``, ``created_by``, and ``related_to``.
 
     Args:
         name: entity name (e.g. ``"Alice Johnson"``, ``"ESP32"``).
         relation_type: optional filter — only return relationships of
             this type. Supported types: ``works_on``, ``uses``,
             ``part_of``, ``related_to``, ``created_by``, ``located_in``,
-            ``attends``. Pass ``null`` or omit for all types.
-        depth: maximum traversal depth (default 1, meaning direct
-            relationships only). Depth 2 follows relationships one hop
-            further. Use depth 3+ for broader exploration.
+            ``attends``. Pass ``None`` or omit for all types. Default: None.
+        depth: maximum traversal depth. Depth 1 = direct relationships only.
+            Depth 2 follows relationships one hop further. Use depth 3+ for
+            broader exploration. Default: 1.
 
     Returns:
-        A formatted table of related entities with relationship type,
-        confidence, and hop depth, or a message if none are found.
+        A formatted human-readable string listing each related entity with its relationship type, confidence score, and hop depth. Returns a message if no related entities are found.
     """
     log.info(f"related_entities — name={name}, type={relation_type}, depth={depth}")
     try:
@@ -271,11 +309,9 @@ def related_entities(
 
 
 def get_shortest_path(start: str, end: str) -> str:
-    """Find the shortest path between two notes in the wiki-link graph.
+    """Find the shortest chain of wiki-link connections between two notes in the vault graph. Use this when the user asks how two notes are connected, or "how do I get from X to Y" in the wiki-link network.
 
-    Uses BFS (breadth-first search) on the unweighted wiki-link graph
-    to find the shortest path. The graph is built from ``[[wiki-links]]``
-    during indexing.
+    Uses BFS (breadth-first search) on the unweighted wiki-link graph built from ``[[wiki-links]]`` during indexing.
 
     Args:
         start: vault-relative path of the starting note
@@ -284,8 +320,7 @@ def get_shortest_path(start: str, end: str) -> str:
             (e.g. ``"Hardware/ESP32.md"``).
 
     Returns:
-        A formatted path showing each hop from start to end, or an
-        error message if no path exists.
+        A formatted human-readable string showing each hop from start to end with note titles, or an error message if no path exists.
     """
     log.info(f"get_shortest_path — start={start}, end={end}")
     try:
@@ -306,13 +341,13 @@ def get_shortest_path(start: str, end: str) -> str:
 
 
 def get_backlinks(path: str) -> list[dict]:
-    """Return all notes linking TO the given note (incoming wiki-link edges).
+    """List all notes in the vault that link TO the given note via wiki-links. Use this when the user asks "what notes reference this note" or "which pages link to X".
 
     Args:
-        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
+        path: vault-relative path to the note (e.g. ``"Folder/Note.md"`` — not a full filesystem path).
 
     Returns:
-        List of dicts with path, title, and trace (the path from source to target).
+        List of dicts, each with keys: path (source note path), title (source note title).
     """
     path = _normalize_path(path)
     log.info(f"get_backlinks — {path}")
@@ -330,13 +365,13 @@ def get_backlinks(path: str) -> list[dict]:
 
 
 def get_linked_notes(path: str) -> list[dict]:
-    """Return all notes the given note links TO (outgoing wiki-link edges).
+    """List all notes that the given note links TO via outgoing wiki-links. Use this when the user asks "what does this note link to" or wants to explore outward connections from a specific note.
 
     Args:
-        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
+        path: vault-relative path to the note (e.g. ``"Folder/Note.md"`` — not a full filesystem path).
 
     Returns:
-        List of dicts with path and title.
+        List of dicts, each with keys: path (target note path), title (target note title).
     """
     path = _normalize_path(path)
     log.info(f"get_linked_notes — {path}")
@@ -354,10 +389,10 @@ def get_linked_notes(path: str) -> list[dict]:
 
 
 def get_broken_links() -> list[dict]:
-    """Find wiki-links across all notes that don't resolve to any existing note.
+    """Scan the entire vault for wiki-links that point to non-existent notes. Use this when the user wants to clean up dead links or verify vault integrity — these are links like ``[[DeletedNote]]`` where the target file no longer exists.
 
     Returns:
-        List of dicts with source_path and link_target (the unresolved wiki-link).
+        List of dicts, each with keys: source_path (the note containing the broken link), link_target (the unresolved wiki-link target).
     """
     log.info("get_broken_links")
     try:
@@ -375,10 +410,10 @@ def get_broken_links() -> list[dict]:
 
 
 def get_graph_stats() -> dict:
-    """Return graph statistics: total nodes, edges, average degree, isolated notes, and hubs.
+    """Return summary statistics about the vault's wiki-link graph structure. Use this when the user wants an overview of the vault's connectivity — total notes, link count, isolated notes, and the most-linked hub notes.
 
     Returns:
-        Dict with nodes, edges, avg_degree, isolated_count, isolated (list), hubs (top 5 by degree).
+        Dict with keys: nodes (int), edges (int), avg_degree (float), isolated_count (int), isolated (list of note paths), hubs (list of top 5 most-linked note paths with degree).
     """
     log.info("get_graph_stats")
     try:
@@ -391,17 +426,16 @@ def get_graph_stats() -> dict:
 
 
 def multi_hop_traversal(path: str, max_depth: int = 2) -> list[dict]:
-    """Perform BFS graph traversal from a seed note up to N hops.
+    """Traverse the wiki-link graph outward from a seed note up to N hops, returning all reachable notes. Use this when the user wants to explore the broader network around a note, or see indirectly connected notes.
 
-    Returns all reachable notes with path traces for explainability
-    (e.g., A -> B -> C shows the chain of wiki-links).
+    Uses BFS (breadth-first search) on the unweighted wiki-link graph. Each result includes a trace showing the full chain of wiki-links from the seed note (e.g., ``["Seed.md", "Intermediary.md", "Target.md"]``).
 
     Args:
-        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
-        max_depth: maximum number of hops to traverse (default 2).
+        path: vault-relative path to the starting note (e.g. ``"Folder/Note.md"`` — not a full filesystem path).
+        max_depth: maximum number of wiki-link hops to traverse. Default: 2.
 
     Returns:
-        List of dicts with path, title, depth (hop count), and trace (list of paths from seed).
+        List of dicts, each with keys: path (reachable note), title, depth (hop count from seed), trace (list of paths forming the chain from seed to this note).
     """
     path = _normalize_path(path)
     log.info(f"multi_hop_traversal — {path}, depth={max_depth}")
@@ -424,18 +458,17 @@ def multi_hop_traversal(path: str, max_depth: int = 2) -> list[dict]:
 
 
 def related_notes(path: str, k: int = 10, graph_weight: float = 0.3) -> list[dict]:
-    """Find notes related to a given note using both semantic similarity and graph proximity.
+    """Find notes that are semantically similar or wiki-link-connected to a given note. Use this when the user asks "what notes are related to X", "find similar notes", or wants recommendations based on both content similarity and graph proximity.
 
-    Combines embedding-based semantic search with wiki-link graph traversal.
-    Notes connected via wiki-links get a proximity boost proportional to graph_weight.
+    Combines embedding-based semantic search with wiki-link graph traversal. Notes connected via wiki-links get a proximity boost proportional to graph_weight.
 
     Args:
-        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
-        k: number of results to return.
-        graph_weight: how much to weight graph proximity (0.0 = pure semantic, 1.0 = pure graph).
+        path: vault-relative path to the source note (e.g. ``"Folder/Note.md"`` — not a full filesystem path).
+        k: number of results to return. Default: 10.
+        graph_weight: how much to weight graph proximity over semantic similarity. 0.0 = pure semantic (embeddings only), 1.0 = pure graph (wiki-links only). Default: 0.3.
 
     Returns:
-        List of dicts with path, title, similarity_score, and is_graph_connected (bool).
+        List of dicts, each with keys: path, title, similarity_score (float, 0-1), is_graph_connected (bool — whether the note shares a direct wiki-link with the source).
     """
     path = _normalize_path(path)
     log.info(f"related_notes — {path}, k={k}, graph_weight={graph_weight}")
@@ -505,13 +538,13 @@ def related_notes(path: str, k: int = 10, graph_weight: float = 0.3) -> list[dic
 
 
 def export_graph(format: str = "json") -> str:
-    """Export the wiki-link graph in DOT or JSON format for external visualization.
+    """Export the entire wiki-link graph as a string for external visualization tools. Use this when the user wants to visualize the vault structure in Graphviz, Gephi, or other graph analysis tools.
 
     Args:
-        format: ``"dot"`` for Graphviz DOT format, ``"json"`` for JSON.
+        format: output format. ``"json"`` for a JSON object with nodes and edges, ``"dot"`` for Graphviz DOT format. Default: ``"json"``.
 
     Returns:
-        The graph representation as a string.
+        The full graph representation as a string — either a JSON string (with ``nodes`` and ``edges`` lists) or a DOT format string.
     """
     log.info(f"export_graph — format={format}")
     try:
@@ -526,9 +559,10 @@ def export_graph(format: str = "json") -> str:
 
 
 def get_orphan_notes() -> list[str]:
-    """Find notes with no incoming or outgoing wiki-links (orphans).
+    """Find all notes that have no incoming or outgoing wiki-links, making them disconnected from the vault graph. Use this when the user wants to clean up or re-integrate isolated notes — these orphans are not reachable from any other note via wiki-links.
 
-    Useful for vault cleanup — these notes are disconnected from the rest.
+    Returns:
+        List of vault-relative note paths for orphan notes (empty list if none found).
     """
     log.info("get_orphan_notes")
     try:
@@ -541,13 +575,12 @@ def get_orphan_notes() -> list[str]:
 
 
 def get_communities() -> dict[str, list[str]]:
-    """Detect communities in the wiki-link graph using label propagation.
+    """Detect densely connected groups (communities) of notes in the wiki-link graph using label propagation. Use this when the user wants to see how the vault clusters into topical groups or to understand the overall structure of connections.
 
-    Notes in the same community are densely connected via wiki-links.
-    Useful for understanding vault structure and grouping related notes.
+    Notes in the same community are more densely connected via wiki-links to each other than to notes outside the community.
 
     Returns:
-        Dict mapping community IDs (integers as strings) to lists of note paths.
+        Dict mapping community IDs (as strings) to sorted lists of vault-relative note paths in that community.
     """
     log.info("get_communities")
     try:
@@ -566,19 +599,16 @@ def get_communities() -> dict[str, list[str]]:
 
 
 def get_note_community(path: str, top_k: int = 5) -> str:
-    """Return which graph community a note belongs to and top-K other members.
+    """Identify which wiki-link community a note belongs to and list its closest neighbours in that community. Use this when the user wants to know the topical cluster a note is part of, or what other notes are closely connected to it via wiki-links.
 
-    Communities are detected via label propagation on the wiki-link graph.
-    Notes in the same community are densely connected via bidirectional
-    wiki-link traversal.
+    Communities are detected via label propagation on the wiki-link graph. Notes in the same community are densely connected via bidirectional wiki-link traversal.
 
     Args:
-        path: vault-relative path of the note, e.g. ``"Projects/MyProject.md"``.
-        top_k: max number of other community members to list (default 5).
+        path: vault-relative path of the note (e.g. ``"Projects/MyProject.md"``).
+        top_k: maximum number of other community members to list. Default: 5.
 
     Returns:
-        A formatted string with community ID and member list, or an error
-        message if the note is not in any community.
+        A formatted human-readable string showing the community ID, total member count, and the top-K other members with their titles. Returns a message if the note is not in any community.
     """
     log.info(f"get_note_community — path={path}, top_k={top_k}")
     try:
@@ -603,18 +633,15 @@ def get_note_community(path: str, top_k: int = 5) -> str:
 
 
 def list_entities(entity_type: str | None = None, n: int = 50) -> list[dict]:
-    """List all entities in the knowledge index, optionally filtered by type.
-
-    Returns entities sorted by mention count descending, showing each
-    entity's name, type, and how many notes mention it.
+    """List all entities in the knowledge index, sorted by mention count descending. Use this when the user wants an overview of all known entities, or to browse entities of a specific type.
 
     Args:
         entity_type: optional filter — one of Person, Project, Hardware,
-            Technology, Location, Concept, Event. Pass ``null`` for all types.
-        n: max results to return (default 50).
+            Technology, Location, Concept, Event. Pass ``None`` for all types. Default: None.
+        n: maximum number of results to return. Default: 50.
 
     Returns:
-        List of dicts with entity_name, entity_type, and mention_count.
+        List of dicts, each with keys: entity_name, entity_type, mention_count.
     """
     log.info(f"list_entities — type={entity_type}, n={n}")
     try:
@@ -633,20 +660,16 @@ def add_entity(
     relations: list[dict] | None = None,
     reindex_matches: bool = True,
 ) -> str:
-    """Manually add an entity to the knowledge index and relationship graph.
+    """Manually create an entity in the knowledge index and relationship graph. Use this when the user wants to register a new person, project, concept, or other entity that wasn't auto-detected during indexing, or to add one explicitly with aliases and relationships.
 
-    Entities are normally auto-extracted during indexing. This tool lets
-    you create one manually (e.g. for a subject like ``"Maria"``) so it
-    appears in entity search results and can have relationships tracked.
+    Entities are normally auto-extracted during indexing. This tool lets you create one manually so it appears in entity search results and can have relationships tracked.
 
-    If ``relations`` are provided, each must be a dict with ``target``
-    (entity name) and optionally ``type`` (defaults to ``"related_to"``)
-    and ``confidence`` (default 0.5).
+    If ``relations`` are provided, each must be a dict with ``target`` (entity name) and optionally ``type`` (defaults to ``"related_to"``) and ``confidence`` (default 0.5).
 
     Args:
         name: canonical entity name (e.g. ``"ESP32"``, ``"Maria"``).
         entity_type: entity type — one of Person, Project, Hardware,
-            Technology, Location, Concept, Event (default ``"Concept"``).
+            Technology, Location, Concept, Event. Default: ``"Concept"``.
         aliases: optional list of alternative names for this entity.
         relations: optional list of relationship dicts, each with
             ``target`` (required), ``type`` (default ``"related_to"``),
@@ -656,7 +679,7 @@ def add_entity(
             entity from the LLM.
 
     Returns:
-        A confirmation message with the created entity details.
+        A formatted confirmation string showing the created entity's name, type, aliases, mention count, and number of relations created.
     """
     log.info(f"add_entity — name={name}, type={entity_type}, aliases={aliases}, relations={relations}")
     try:
@@ -703,11 +726,9 @@ def add_entity(
 
 
 def add_aliases(name: str, new_aliases: list[str], reindex_matches: bool = True) -> str:
-    """Add aliases to an existing entity.
+    """Register one or more alternative names for an existing entity. Use this when the user mentions that an entity is known by other names (e.g., nicknames, acronyms, translations) so that searching for any alias finds the same entity.
 
-    Aliases allow the entity to be found by alternative names in searches.
-    For example, adding ``"Yahweh"`` as an alias of ``"God"`` means searching
-    for ``"Yahweh"`` will find notes about God.
+    For example, adding ``"Yahweh"`` as an alias of ``"God"`` means searching for ``"Yahweh"`` will find notes about God.
 
     Args:
         name: canonical entity name (e.g. ``"God"``, ``"ESP32"``).
@@ -717,7 +738,7 @@ def add_aliases(name: str, new_aliases: list[str], reindex_matches: bool = True)
             entity from the LLM.
 
     Returns:
-        A confirmation message with the updated alias list.
+        A formatted confirmation string showing the updated entity name, type, full alias list, and mention count.
     """
     log.info(f"add_aliases — name={name}, new_aliases={new_aliases}")
     try:
@@ -753,18 +774,17 @@ def add_aliases(name: str, new_aliases: list[str], reindex_matches: bool = True)
 
 
 def change_entity_type(name: str, new_type: str) -> str:
-    """Change the type of an existing entity.
+    """Correct the classification type of an existing entity. Use this when the user notices an entity was misclassified (e.g., a person was auto-detected as ``"Concept"``) and needs to be re-typed.
 
-    For example, if ``"Maria"`` was auto-classified as ``Concept`` but
-    should be ``Person``, use this tool to correct it.
+    For example, if ``"Maria"`` was auto-classified as ``Concept`` but should be ``Person``, use this tool.
 
     Args:
-        name: entity name (canonical or alias).
+        name: entity name — canonical or alias (e.g. ``"Maria"``).
         new_type: one of Person, Project, Hardware, Technology, Location,
             Concept, Event.
 
     Returns:
-        A confirmation message with the updated entity details.
+        A formatted confirmation string showing the updated entity name, new type, and mention count.
     """
     log.info(f"change_entity_type — name={name}, new_type={new_type}")
     try:
@@ -783,13 +803,12 @@ def change_entity_type(name: str, new_type: str) -> str:
 
 
 def get_ranking_weights() -> str:
-    """Return the current ranking weights used by the unified Ranker.
+    """Show the current weight settings for the unified search Ranker. Use this when the user wants to understand how search results are scored — the Ranker blends four signals and you may need to adjust them for better results.
 
-    The Ranker blends four signals: semantic, entity, graph, and keyword.
-    Weights are normalised to sum to 1.0.
+    The Ranker blends four signals: semantic (embedding similarity), entity (entity-index matching), graph (wiki-link proximity), and keyword (BM25 text search). Weights are normalised to sum to 1.0.
 
     Returns:
-        A formatted string showing each signal's weight.
+        A formatted human-readable string showing the current weight for each signal (semantic, entity, graph, keyword) as values between 0.0 and 1.0.
     """
     log.info("get_ranking_weights")
     w = ranker.weights()
@@ -804,20 +823,18 @@ def set_ranking_weights(
     graph: float | None = None,
     keyword: float | None = None,
 ) -> str:
-    """Set ranking weights for the unified Ranker at runtime.
+    """Adjust the weight of each signal in the unified search Ranker to tune search result quality. Use this when the user says search results are too heavily biased toward one signal (e.g., too literal/keyword-heavy, or too semantic) and needs to rebalance them.
 
-    The Ranker blends four signals: semantic, entity, graph, and keyword.
-    Only the weights you specify are updated; others keep their current value.
-    Weights are automatically normalised to sum to 1.0 internally.
+    The Ranker blends four signals: semantic (embedding similarity), entity (entity-index matching), graph (wiki-link proximity), and keyword (BM25 text search). Only the weights you specify are updated; unspecified weights keep their current value. Weights are automatically normalised to sum to 1.0 internally.
 
     Args:
-        semantic: weight for semantic (embedding) similarity (0.0-1.0).
-        entity: weight for entity-index matching (0.0-1.0).
-        graph: weight for wiki-link graph proximity (0.0-1.0).
-        keyword: weight for BM25 keyword search (0.0-1.0).
+        semantic: weight for semantic (embedding) similarity (0.0-1.0). Default: None (keep current).
+        entity: weight for entity-index matching (0.0-1.0). Default: None (keep current).
+        graph: weight for wiki-link graph proximity (0.0-1.0). Default: None (keep current).
+        keyword: weight for BM25 keyword search (0.0-1.0). Default: None (keep current).
 
     Returns:
-        A formatted string showing the updated weights.
+        A formatted human-readable string showing all four updated weights after normalisation.
     """
     log.info("set_ranking_weights — semantic=%s, entity=%s, graph=%s, keyword=%s",
              semantic, entity, graph, keyword)
@@ -837,6 +854,7 @@ __all_tools__ = [
     "add_aliases",
     "change_entity_type",
     "merge_entities",
+    "import_entities",
     "entity_timeline",
     "related_entities",
     "get_shortest_path",

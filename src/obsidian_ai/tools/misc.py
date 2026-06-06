@@ -10,22 +10,22 @@ def get_clusters(
     force_recompute: bool = False,
     similarity_threshold: float = 0.6,
 ) -> list[dict]:
-    """Return semantic clusters of notes based on embedding similarity.
+    """Group notes into semantically similar clusters using embedding cosine similarity. Use this when the user wants to discover thematic groupings, identify topic areas, or get an overview of how their notes relate by meaning across the vault.
 
-    Groups notes by meaning across the vault. Each cluster has a
-    descriptive label, central note, and list of member notes.
+    Notes are clustered via community detection on a similarity graph built from embedding vectors. Each returned cluster includes a human-readable label, the member notes, and the most representative (central) note. Results are cached; pass ``force_recompute=True`` to regenerate.
 
     Args:
-        force_recompute: if True, ignore cache and re-run clustering.
-        similarity_threshold: minimum cosine similarity (0-1) for two
-            notes to be considered connected (default 0.6).
+        force_recompute: Whether to ignore the cached clustering result and re-run from scratch. Defaults to ``False``. Use ``True`` after adding or editing many notes to get fresh groupings.
+        similarity_threshold: Minimum cosine similarity (0.0 to 1.0) required for two notes to be connected in the similarity graph. Higher values produce tighter, smaller clusters; lower values produce broader, fewer clusters. Defaults to ``0.6``.
 
     Returns:
-        List of clusters, each with:
-        - ``label`` — descriptive cluster label
-        - ``notes`` — list of note paths in the cluster
-        - ``size`` — number of notes in the cluster
-        - ``central_note`` — path of the most central note
+        A list of cluster dicts, each containing:
+        - ``label`` (str) — a descriptive label generated from the cluster's content
+        - ``notes`` (list[str]) — vault-relative paths of all notes in the cluster
+        - ``size`` (int) — number of notes in the cluster
+        - ``central_note`` (str) — the vault-relative path of the most semantically central note in the cluster
+
+        Returns an empty list if clustering fails.
     """
     log.info(f"get_clusters — force_recompute={force_recompute}, similarity_threshold={similarity_threshold}")
     try:
@@ -39,12 +39,19 @@ def get_clusters(
 
 
 def health_check() -> dict:
-    """Check the health of all backend services (Ollama, config, caches).
+    """Check whether all backend services are running and responsive. Use this to verify that Ollama (or the configured OpenAI-compatible API), ChromaDB (the embedding vector store), and the Obsidian vault are accessible before calling other tools.
 
-    Returns a dict with per-service status and an overall health indicator.
+    Pings the LLM provider, counts notes from the Obsidian vault, and counts chunks in ChromaDB. Returns per-service status and an overall health indicator.
 
     Returns:
-        Dict with ``ollama`` status, ``overall`` (``"healthy"`` or ``"degraded"``).
+        A dict with:
+        - ``ollama`` (dict) — status response from the LLM provider, includes keys like ``available`` (bool) and possibly ``models`` (list).
+        - ``embed_model`` (str) — name of the embedding model configured (e.g. ``"nomic-embed-text"``).
+        - ``chat_model`` (str) — name of the chat / LLM model configured (e.g. ``"qwen2.5"`` or ``"gpt-4"``).
+        - ``note_count`` (int) — total number of notes found in the Obsidian vault.
+        - ``chunk_count`` (int) — total number of indexed chunks in ChromaDB.
+        - ``overall`` (str) — ``"healthy"`` if the LLM provider is available, ``"degraded"`` otherwise.
+        - ``error`` (str) — present only if an exception was raised, containing the error message.
     """
     log.info("health_check")
     try:

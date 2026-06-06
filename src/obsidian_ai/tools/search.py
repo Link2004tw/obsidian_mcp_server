@@ -26,7 +26,12 @@ log = get_logger("obsidian_ai.tools.search")
 
 
 def get_index_stats() -> str:
-    """Return index statistics (total chunks, unique notes, config info, cache stats)."""
+    """Get diagnostic statistics about the note index. Use this when the user asks about how many notes are indexed, what embedding model is used, or wants to check the health/status of the vault index.
+
+    Returns:
+        A human-readable string listing unique notes, total chunks, embedding model,
+        ChromaDB path, cache hit/miss stats, and entity extraction counts.
+    """
     log.info("get_index_stats")
     try:
         stats = chroma_store.get_index_stats()
@@ -49,11 +54,14 @@ def get_index_stats() -> str:
 
 
 def find_duplicate_notes(threshold: float = 0.9, n: int = 20) -> list[dict]:
-    """Find near-duplicate notes via embedding similarity.
+    """Find near-duplicate notes via embedding similarity. Use this when the user wants to clean up their vault by finding notes that are very similar or near-duplicates.
 
     Args:
-        threshold: cosine similarity threshold (0.0-1.0), default 0.9. Higher = must be more similar.
+        threshold: cosine similarity threshold between 0.0 and 1.0 (default 0.9). Higher values require more similarity to count as a duplicate.
         n: maximum number of duplicate pairs to return (default 20).
+
+    Returns:
+        A list of dicts, each with fields like ``path`` and ``similarity_score`` describing a near-duplicate pair.
     """
     log.info(f"find_duplicate_notes — threshold={threshold}, n={n}")
     try:
@@ -87,46 +95,42 @@ def search_notes(
     use_summaries: bool = False,
     summary_threshold: float = 0.7,
 ) -> list[dict]:
-    """Search notes semantically with optional metadata filters.
+    """Search notes by semantic meaning (embedding similarity) with optional metadata filters. Use this when the user wants to find notes about a topic, concept, or idea — it understands meaning, not just keywords.
 
-    By default returns passage-level results — each result is a single
-    matching chunk. Multiple passages from the same note may appear.
+    By default returns passage-level results — each result is a single matching chunk.
+    Multiple passages from the same note may appear. Pass ``group_by_note=True`` to collapse
+    chunk-level results into one result per note with the highest similarity score, best
+    snippet, and a ``chunk_count``.
 
-    When ``group_by_note=True``, collapses chunk-level results into one
-    result per note with the highest similarity score, best snippet, and
-    a ``chunk_count`` field showing how many chunks matched.
-
-    Filters (all optional):
-    - ``tags`` — only notes having ALL of these YAML tags
-    - ``exclude_tags`` — exclude notes having ANY of these tags
-    - ``folder`` — only notes inside this vault-relative folder
-    - ``date_after`` / ``date_before`` — ISO date strings (e.g. ``2024-06-01``) to filter by file mtime
-    - ``expand_query`` — if True, use the LLM to generate alternative query phrasings
-      for broader search (adds ~1-2s per search)
-    - ``keyword_weight`` — blend ratio for BM25 keyword search (0.0 = pure semantic,
-      1.0 = pure keyword)
-    - ``min_similarity`` — minimum final similarity score (0-1); results below this
-      threshold are filtered out
-    - ``diversity_penalty`` — diversity penalty factor (0.0 = none, 0.5 = moderate,
-      1.0 = aggressive). Penalises passages from a note that already has results
-      selected, encouraging diverse sources.
-    - ``use_graph`` — if True, expand results via wiki-link graph traversal
-    - ``graph_depth`` — max hops for graph traversal (default 1)
-    - ``graph_weight`` — weight for graph proximity boost (0.0-1.0, default 0.2)
-    - ``use_entities`` — if True, also search the entity index for notes matching the query entity name
-    - ``entity_types`` — optional list of entity types to filter by (e.g. ``["Person"]``)
-    - ``group_by_note`` — if True, collapse chunk-level results into note-level (default False)
-        - ``expand_entities`` — if True, when entities are auto-detected in the
-          query, also search for related entities via the relationship graph
-        - ``use_summaries`` — if True, include summary-embedding results as a
-            retrieval signal.
-        - ``summary_threshold`` — minimum similarity (0–1) for a summary
-            result to be included (default 0.7).
+    Args:
+        query: the natural language search query describing what to find.
+        n: maximum number of results to return (default 5).
+        tags: optional list of YAML frontmatter tags — only notes having ALL of these tags will be returned.
+        exclude_tags: optional list of tags — notes having ANY of these tags will be excluded.
+        folder: optional vault-relative folder path — only search notes inside this folder.
+        date_after: optional ISO date string (e.g. ``"2024-06-01"``) — only notes modified on or after this date.
+        date_before: optional ISO date string (e.g. ``"2024-06-01"``) — only notes modified on or before this date.
+        expand_query: if True, use the LLM to generate alternative query phrasings for broader recall (adds ~1-2s).
+        keyword_weight: blend ratio for BM25 keyword search between 0.0 and 1.0 (0.0 = pure semantic, 1.0 = pure keyword, default 0.0).
+        min_similarity: optional minimum similarity score threshold (0-1). Results below this are filtered out.
+        diversity_penalty: diversity penalty factor between 0.0 and 1.0 (0.0 = none, 0.5 = moderate, 1.0 = aggressive). Penalises passages from notes that already have results selected, encouraging diverse sources.
+        use_graph: if True, expand results by following [[wiki-links]] from matching notes to find connected notes.
+        graph_depth: maximum BFS hops for graph traversal when ``use_graph`` is True (default 1).
+        graph_weight: weight for graph proximity boost between 0.0 and 1.0 (default 0.2).
+        use_entities: if True, also search the entity index for notes mentioning entities that match the query.
+        entity_types: optional list of entity types to filter by (e.g. ``["Person"]``, ``["Project", "Technology"]``).
+        group_by_note: if True, collapse chunk-level results into one result per note (default False).
+        expand_entities: if True, when entities are auto-detected in the query, also search for related entities via the entity relationship graph.
+        use_summaries: if True, also search note-level semantic summaries as an additional retrieval signal.
+        summary_threshold: minimum similarity score (0-1) for a summary result to be included (default 0.7).
 
     Returns:
-        Passage-level results (default) or note-level results (when ``group_by_note=True``).
-        Each dict has ``path``, ``title``, ``similarity_score``, ``snippet``,
-        and when grouped: ``chunk_count`` (how many chunks matched this note).
+        A list of dicts. Each dict contains:
+        - ``path`` — vault-relative note path
+        - ``title`` — note title (filename without extension)
+        - ``similarity_score`` — 0-to-1 score (higher = more relevant)
+        - ``snippet`` — excerpt of the matching passage
+        - ``chunk_count`` — (only when ``group_by_note=True``) how many chunks matched in this note
     """
     log.info(
         "search_notes — query=%s, n=%s, tags=%s, exclude_tags=%s, folder=%s, date_after=%s, date_before=%s, expand=%s, kw_weight=%s, min_sim=%s, div_penalty=%s, use_graph=%s, graph_depth=%s, graph_weight=%s, use_entities=%s, entity_types=%s, group_by_note=%s, expand_entities=%s, use_summaries=%s, summary_threshold=%s",
@@ -190,11 +194,22 @@ def batch_search(
     keyword_weight: float = 0.0,
     min_similarity: float | None = None,
 ) -> dict[str, list[dict]]:
-    """Run multiple searches in one call. Returns ``dict[query, results]``.
+    """Run multiple independent semantic searches in a single call. Use this when you have several queries to run at once and want to batch them for efficiency. For per-query fine-grained options (graph, entities, expansion), use individual ``search_notes`` calls instead.
 
-    Each search runs ``search_notes``-style hybrid search (semantic + BM25)
-    with optional metadata filters. For per-query fine-grained params
-    (expand_query, graph, entities), use individual ``search_notes`` calls.
+    Each query runs a hybrid search (semantic + BM25 keyword) with the same shared metadata filters.
+
+    Args:
+        queries: a list of query strings, each searched independently.
+        n: maximum results per query (default 5).
+        tags: optional list of YAML frontmatter tags — only notes having ALL of these tags.
+        exclude_tags: optional list of tags to exclude.
+        folder: optional vault-relative folder path to restrict search to.
+        keyword_weight: BM25 keyword blend between 0.0 and 1.0 (default 0.0).
+        min_similarity: optional minimum similarity threshold (0-1).
+
+    Returns:
+        A dict mapping each query string to its list of result dicts. Each result dict has
+        ``path``, ``title``, ``similarity_score``, ``snippet``, and ``matched_chunk_idx``.
     """
     log.info("batch_search — %d queries, n=%s", len(queries), n)
     where = _build_search_where(tags=tags, folder=folder)
@@ -222,26 +237,28 @@ def composite_search(
     n: int = 5,
     retrieval_depth: int = 2,
 ) -> list[dict]:
-    """High-recall search combining summary embeddings, entity relationships,
-    and community-aware graph traversal.
+    """High-recall composite search combining summary embeddings, entity relationships, and community-aware graph traversal. Use this when you need maximum recall — e.g., the user is looking for everything related to a topic and it's OK to get broad, diverse results.
 
-    Blends three retrieval strategies into a single ranked result set:
+    Blends three retrieval strategies into a single ranked set (note-level, not chunk-level):
 
-    * **Summary embeddings** — searches note-level semantic summaries.
-    * **Entity expansion** — auto-detects entities in the query and follows
-      relationship edges (works_on, part_of, etc.) to find related notes.
-    * **Community graph** — finds other notes in the same wiki-link communities
-      as top results, surfacing thematically related notes that may not share
-      direct keywords or links.
+    1. **Summary embeddings** — searches note-level semantic summaries.
+    2. **Entity expansion** — auto-detects entities in the query and follows relationship edges (``works_on``, ``part_of``, etc.) to find related notes.
+    3. **Community graph** — finds other notes in the same wiki-link communities as top results, surfacing thematically related notes that may not share direct keywords or links.
 
-    ``retrieval_depth`` controls which strategies are used:
+    Args:
+        query: the topic or concept to search for.
+        n: maximum number of results to return (default 5).
+        retrieval_depth: controls which strategies to use (default 2).
+            ``1`` = summary embeddings only (fast).
+            ``2`` = summary + entity expansion (balanced).
+            ``3`` = full composite with community graph (maximum recall).
 
-    * ``1`` — summary embeddings only (fast, broad coverage)
-    * ``2`` — summary + entity expansion (default — balanced recall)
-    * ``3`` — full composite with community graph (maximum recall)
-
-    Returns note-level results (not chunks), each with ``score`` and
-    ``matched_by`` describing which strategies contributed.
+    Returns:
+        A list of dicts, each with:
+        - ``path`` — vault-relative note path
+        - ``title`` — note title (filename without extension)
+        - ``score`` — 0-to-1 relevance score
+        - ``matched_by`` — list of strategy names that found this note (e.g. ``["summary", "entity"]``)
     """
     log.info("composite_search — query=%r, n=%s, depth=%s", query, n, retrieval_depth)
     try:
@@ -257,11 +274,15 @@ def composite_search(
 
 
 def ask_agent(query: str) -> str:
-    """Route a query to the best tool automatically using an LLM agent.
+    """Route a query to the best vault tool automatically using an LLM-powered agent. Use this when the user is vague about what they want or you're unsure which tool (``search_notes``, ``summarize_topic``, ``search_entities``, ``related_notes``, ``read_note``, ``ask_vault``, etc.) would best answer their request.
 
-    The agent decides whether to use search_notes, summarize_topic,
-    search_entities, related_notes, read_note, or ask_vault based on
-    the user's intent. Tool results are returned directly.
+    The agent analyses the user's intent and selects the most appropriate tool automatically.
+
+    Args:
+        query: the user's natural language request or question about their vault.
+
+    Returns:
+        A string containing the result from whichever tool the agent chose to run.
     """
     log.info(f"ask_agent — {query}")
     try:
@@ -288,28 +309,27 @@ def ask_vault(
     auto_weights: bool = False,
     auto_rewrite: bool = False,
 ) -> str:
-    """Ask a question about your Obsidian vault. Searches relevant notes and uses LLM to answer.
+    """Ask a question about the Obsidian vault and get an LLM-generated answer synthesised from relevant notes. Use this when the user asks a direct question about what's in their notes — it searches for relevant information and returns a natural language answer.
 
-    Uses the multi-strategy retrieval pipeline combining semantic search,
-    entity lookup, and wiki-link graph traversal.
+    Uses multi-strategy retrieval: semantic search, entity lookup, and optional wiki-link graph traversal. Results are fed to an LLM to produce a concise answer.
 
     Args:
-        question: the question to answer.
-        top_k: number of top notes to retrieve.
-        use_graph: if True, expand results by following wiki-links to find connected notes.
-        graph_depth: max hops for graph traversal (default 1).
-        use_entities: if True, also search the entity index for matching entities.
+        question: the natural language question to answer using the vault's contents.
+        top_k: number of top notes to retrieve as context for the LLM (default 3).
+        use_graph: if True, expand results by following [[wiki-links]] to find connected notes (default False).
+        graph_depth: max BFS hops for graph traversal when ``use_graph`` is True (default 1).
+        use_entities: if True, also search the entity index for notes mentioning entities matching the query (default False).
         entity_types: optional list of entity types to filter by (e.g. ``["Person"]``).
-        keyword_weight: blend ratio for BM25 keyword search (0.0 = pure semantic, 1.0 = pure keyword).
-        expand_query: if True, use the LLM to generate alternative query phrasings for broader search.
-        expand_entities: if True, when entities are auto-detected in the
-            query, also search for related entities via the relationship graph.
-        use_summaries: if True, include summary-embedding results as a
-            retrieval signal.
-        summary_threshold: minimum similarity (0–1) for a summary
-            result to be included (default 0.7).
-        auto_rewrite: if True, rewrite the query using known vault
-            terminology before searching (default False).
+        keyword_weight: BM25 keyword blend between 0.0 and 1.0 (0.0 = pure semantic, 1.0 = pure keyword, default 0.0).
+        expand_query: if True, use the LLM to generate alternative query phrasings for broader recall (default False).
+        expand_entities: if True, when entities are auto-detected in the query, also search for related entities via the entity relationship graph (default False).
+        use_summaries: if True, include note-level summary embeddings as an additional retrieval signal (default False).
+        summary_threshold: minimum similarity score (0-1) for a summary result to be included (default 0.7).
+        auto_weights: if True, detect query intent (entity-heavy, keyword-heavy, etc.) and adjust ranking weights dynamically (default False).
+        auto_rewrite: if True, rewrite the query using known vault terminology before searching (default False).
+
+    Returns:
+        A string containing the LLM-generated answer synthesised from the retrieved notes.
     """
     log.info(
         "ask_vault — question=%s, top_k=%s, use_graph=%s, graph_depth=%s, use_entities=%s, entity_types=%s, keyword_weight=%s, expand_query=%s, expand_entities=%s, use_summaries=%s, summary_threshold=%s, auto_rewrite=%s",
@@ -349,38 +369,33 @@ def retrieve_notes(
     auto_weights: bool = False,
     auto_rewrite: bool = False,
 ) -> list[dict]:
-    """Multi-strategy retrieval pipeline combining semantic search, entity lookup,
-    and wiki-link graph traversal into a single unified result set.
+    """Multi-strategy retrieval that returns full note content. Use this when you need both the note content (full text) and metadata about which retrieval strategy found each note. Unlike ``search_notes`` which returns passage snippets, this returns entire note bodies.
 
-    Returns note-level results (not chunks), each tagged with which strategy
-    found it (``matched_by`` field) and a blended similarity score.
+    Combines semantic search, entity lookup, and wiki-link graph traversal into a single unified, note-level result set. Each result is tagged with which strategy(s) found it.
 
     Args:
-        query: the search query or topic.
-        top_k: max notes to return (default 5).
-        use_graph: if True, expand via wiki-link graph traversal.
-        graph_depth: max BFS hops when use_graph is True (default 1).
-        graph_weight: weight for graph proximity boost, 0.0-1.0 (default 0.2).
-        use_entities: if True, search the entity index for matching entities.
-        entity_types: optional list of entity types to filter by (e.g. ``["Person"]``).
-        keyword_weight: BM25 keyword blend, 0.0-1.0 (0.0 = pure semantic, 1.0 = pure keyword).
-        min_similarity: minimum similarity score threshold (0-1). Results below are filtered out.
-        expand_query: if True, use LLM to expand the query with synonyms for broader search.
-        expand_entities: if True, when entities are auto-detected in the
-            query, also search for related entities via the relationship graph.
-        use_summaries: if True, include summary-embedding results as a
-            retrieval signal.
-        summary_threshold: minimum similarity (0–1) for a summary
-            result to be included (default 0.7).
-        auto_rewrite: if True, rewrite the query using known vault
-            terminology before searching (default False).
+        query: the search query or topic to find notes about.
+        top_k: maximum number of notes to return (default 5).
+        use_graph: if True, expand via [[wiki-link]] graph traversal (default False).
+        graph_depth: max BFS hops for graph traversal when ``use_graph`` is True (default 1).
+        graph_weight: weight for graph proximity boost between 0.0 and 1.0 (default 0.2).
+        use_entities: if True, also search the entity index for notes matching entities in the query (default False).
+        entity_types: optional list of entity types to filter by (e.g. ``["Person"]``, ``["Project"]``).
+        keyword_weight: BM25 keyword blend between 0.0 and 1.0 (0.0 = pure semantic, 1.0 = pure keyword, default 0.0).
+        min_similarity: optional minimum similarity score threshold (0-1). Results below this are filtered out.
+        expand_query: if True, use the LLM to generate alternative query phrasings for broader recall (default False).
+        expand_entities: if True, when entities are auto-detected in the query, also search for related entities via the entity relationship graph (default False).
+        use_summaries: if True, include note-level summary embeddings as an additional retrieval signal (default False).
+        summary_threshold: minimum similarity score (0-1) for a summary result to be included (default 0.7).
+        auto_weights: if True, detect query intent and adjust ranking weights dynamically (default False).
+        auto_rewrite: if True, rewrite the query using known vault terminology before searching (default False).
 
     Returns:
         A list of dicts, each with:
         - ``path`` — vault-relative note path
-        - ``title`` — note title (basename without extension)
+        - ``title`` — note title (filename without extension)
         - ``content`` — full note content (truncated to context budget)
-        - ``similarity_score`` — 0-to-1 blended score (higher = more relevant)
+        - ``similarity_score`` — 0-to-1 blended relevance score (higher = more relevant)
         - ``matched_by`` — list of strategies that found this note (e.g. ``["semantic", "entity"]``)
     """
     log.info(
@@ -406,15 +421,15 @@ def retrieve_notes(
 
 
 def tag_notes(query: str, top_k: int = 5, sync: bool = True) -> str:
-    """Search notes matching a query and auto-suggest tags using LLM.
+    """Search notes matching a query and automatically suggest YAML frontmatter tags using the LLM. Use this when the user wants to tag or organise their notes — it finds relevant notes by semantic search, then asks an LLM to propose appropriate tags.
 
     Args:
-        query: search query to find relevant notes.
-        top_k: number of notes to process (default 5).
-        sync: if True (default), re-index each tagged note so changes are reflected in search.
+        query: a semantic search query to find notes to tag.
+        top_k: number of top-matching notes to process and suggest tags for (default 5).
+        sync: if True (default), re-index each tagged note in ChromaDB so changes are reflected immediately in future searches.
 
     Returns:
-        Confirmation message with the tag map.
+        A string (typically JSON) showing the mapping from note paths to suggested tags.
     """
     log.info(f"tag_notes — query={query!r}, top_k={top_k}")
     try:
@@ -450,34 +465,28 @@ def summarize_topic(
     auto_weights: bool = False,
     auto_rewrite: bool = False,
 ) -> str:
-    """Search all notes related to a topic and return an LLM-generated consolidated summary.
+    """Search all notes related to a topic and return an LLM-generated consolidated summary. Use this when the user wants a written overview, briefing, or synthesis of everything the vault contains about a subject — it retrieves the most relevant notes and asks the LLM to synthesise them into a coherent summary.
 
-    Uses the multi-strategy retrieval pipeline combining semantic search,
-    entity lookup, and wiki-link graph traversal.
+    Uses multi-strategy retrieval: semantic search, entity lookup, and wiki-link graph traversal. By default, both graph traversal and entity search are enabled for comprehensive coverage.
 
     Args:
-        topic: the topic or subject to summarize.
-        top_k: number of notes to retrieve for context (default 5).
-        use_graph: if True, expand results via wiki-link graph traversal (default True).
-        graph_depth: max hops for graph traversal (default 1).
-        graph_weight: weight for graph proximity boost, 0.0-1.0 (default 0.2).
-        use_entities: if True, also search the entity index (default True).
-        entity_types: optional list of entity types to filter by (e.g. ``["Person"]``).
-        keyword_weight: BM25 keyword blend, 0.0-1.0 (0.0 = pure semantic, 1.0 = pure keyword).
-        expand_query: if True, use LLM to expand the query with synonyms for broader search.
-        expand_entities: if True, when entities are auto-detected in the
-            query, also search for related entities via the relationship graph.
-        use_summaries: if True, include summary-embedding results as a
-            retrieval signal.
-        summary_threshold: minimum similarity (0–1) for a summary
-            result to be included (default 0.7).
-        auto_weights: if True, detect query intent (entity, keyword, graph)
-            and adjust ranking weights dynamically (default False).
-        auto_rewrite: if True, rewrite the query using known vault
-            terminology before searching (default False).
+        topic: the topic or subject to summarise.
+        top_k: number of notes to retrieve as context for the LLM (default 5).
+        use_graph: if True, expand results by following [[wiki-links]] to find connected notes (default True).
+        graph_depth: max BFS hops for graph traversal when ``use_graph`` is True (default 1).
+        graph_weight: weight for graph proximity boost between 0.0 and 1.0 (default 0.2).
+        use_entities: if True, also search the entity index for notes mentioning entities related to the topic (default True).
+        entity_types: optional list of entity types to filter by (e.g. ``["Person"]``, ``["Project"]``).
+        keyword_weight: BM25 keyword blend between 0.0 and 1.0 (0.0 = pure semantic, 1.0 = pure keyword, default 0.0).
+        expand_query: if True, use the LLM to generate alternative query phrasings for broader recall (default False).
+        expand_entities: if True, when entities are auto-detected in the query, also search for related entities via the entity relationship graph (default False).
+        use_summaries: if True, include note-level summary embeddings as an additional retrieval signal (default False).
+        summary_threshold: minimum similarity score (0-1) for a summary result to be included (default 0.7).
+        auto_weights: if True, detect query intent (entity-heavy, keyword-heavy, etc.) and adjust ranking weights dynamically (default False).
+        auto_rewrite: if True, rewrite the query using known vault terminology before searching (default False).
 
     Returns:
-        An LLM-generated summary of the topic across related notes.
+        A string containing the LLM-generated summary of the topic, synthesised from the retrieved notes.
     """
     log.info(
         "summarize_topic — topic=%s, top_k=%s, use_graph=%s, graph_depth=%s, graph_weight=%s, use_entities=%s, entity_types=%s, keyword_weight=%s, expand_query=%s, expand_entities=%s, use_summaries=%s, summary_threshold=%s, auto_weights=%s, auto_rewrite=%s",
@@ -501,20 +510,23 @@ def summarize_topic(
 
 
 def get_subject(subject: str, top_k: int = 10, keyword_weight: float = 0.3, group_by_note: bool = False) -> list[dict]:
-    """Get notes related to a free-form subject.
+    """Get notes related to a free-form subject using LLM-powered query expansion. Use this when the user asks about a broad subject, person, or concept — it expands the subject with related terms via the LLM, then performs a hybrid search (semantic + BM25 keyword).
 
-    Uses LLM to expand the subject with related terms, then performs hybrid
-    search (semantic + BM25) across the vault.
+    Unlike ``search_notes``, this tool automatically enriches the query with synonyms and related terms for a broader, more exploratory search.
 
     Args:
-        subject: the subject or topic to search for.
-        top_k: max results to return.
-        keyword_weight: blend ratio for BM25 keyword search (0.0 = pure semantic, 1.0 = pure keyword).
-        group_by_note: if True, collapse chunk-level results into note-level (default False).
+        subject: the free-form subject, person, or topic to search for (e.g. ``"machine learning"``, ``"productivity"``).
+        top_k: maximum number of results to return (default 10).
+        keyword_weight: BM25 keyword blend between 0.0 and 1.0 (0.0 = pure semantic, 1.0 = pure keyword, default 0.3 — slightly favours keywords by default).
+        group_by_note: if True, collapse chunk-level results into one result per note with a ``chunk_count`` field (default False).
 
     Returns:
-        List of dicts with path, title, similarity_score, snippet.
-        When ``group_by_note=True``, also includes ``chunk_count``.
+        A list of dicts. Each dict contains:
+        - ``path`` — vault-relative note path
+        - ``title`` — note title (filename without extension)
+        - ``similarity_score`` — 0-to-1 relevance score
+        - ``snippet`` — excerpt of the matching passage
+        - ``chunk_count`` — (only when ``group_by_note=True``) how many chunks matched in this note
     """
     log.info(f"get_subject — subject={subject}, top_k={top_k}, keyword_weight={keyword_weight}, group_by_note={group_by_note}")
     try:

@@ -28,11 +28,12 @@ obsidian_client.py                  chroma_store.py         ranker.py         pi
   (port 27123)                            │                + entity                ├── extract_entities()
         │                            ChromaDB +              + graph                ├── expand_query()
         ▼                            data/*.json             + keyword              └── route_query()
-   llm_client.py                     (caches, hashes,         │
-   ├── embed(text) → Ollama →        summaries, titles)      ▼                  dashboard.py
-   │   nomic-embed-text                                 tools/search.py        (HTML output)
-   └── chat(messages) → Ollama                             ._shared              │
-       qwen3:4b                                            ._hybrid_search       graphify-out/
+   llm_client.py (provider           (caches, hashes,         │
+   │  abstraction)                   summaries, titles)      ▼                  dashboard.py
+   ├── embed(text) ──► Embed                              tools/search.py        (HTML output)
+   │   provider (ollama/openai)                             ._shared              │
+   └── chat(messages) ──► Chat                             ._hybrid_search       graphify-out/
+       provider (ollama/openai)                             ._rewrite_query        (exports)
                                                            ._rewrite_query        (exports)
                                                               │
                                                               ▼
@@ -53,15 +54,21 @@ Loads environment variables from `.env` via `python-dotenv`. Exports all setting
 Thin HTTP wrapper around the Obsidian Local REST API. Provides list, read, write, and directory operations. Cache files (`note_paths.json`, `title_to_path.json`) stored in `config.data_dir`.
 
 ### llm_client.py
-Wrapper around Ollama's embedding and chat APIs. Provides:
-- `embed(text)` — returns a vector (768-dim for `nomic-embed-text`)
-- `chat(messages, model, think)` — chat completion with retry
+Pluggable provider abstraction for embeddings and chat. Supports multiple backends via `providers/`:
+- `embed(text)` — returns a vector (provider-agnostic, shared LRU + persistent cache)
+- `batch_embed(texts)` — batch embedding with cache-aware dedup
+- `chat(messages, model, think)` — chat completion
 - `truncate_to_budget(text, max_words)` — truncation for context limits
 - `clear_embed_cache()` / `embed_cache_info()` — cache management
 - `switch_embed_model(model_name)` — runtime model switching
-- `_request_with_retry()` — 3 retries with exponential backoff (2s → 4s → 8s)
 
-Embeddings are cached in memory by text hash. Chat requests are limited to 1 concurrent call via `_llm_chat_lock` (semaphore) to prevent Ollama timeout pileup during parallel indexing.
+**Available providers:**
+- **Ollama** (default) — local, no API key needed
+- **OpenAI** — cloud or compatible APIs (Groq, Together, vLLM), requires API key
+
+Providers are selected via `LLM_PROVIDER` (chat) and `EMBED_PROVIDER` (embedding) env vars.
+They can differ — e.g., Ollama for embeddings (local) + OpenAI for chat (smart).
+Embeddings are cached in memory by text hash (shared across providers).
 
 ### chroma_store.py
 Local ChromaDB persistence layer. Provides:
@@ -73,6 +80,9 @@ Local ChromaDB persistence layer. Provides:
 - `reset_collection` — wipe for model switching
 
 Document IDs use the format `{path}::chunk_{N}`.
+
+### entity_resolver.py
+Cross-vault entity resolution module. Imports entity data from another vault's JSON export, runs configurable dedup (exact name match, alias overlap, fuzzy similarity), and merges mentions + relations into the current entity index. Used by the `import_entities` MCP tool.
 
 ### entity_store.py
 Persistent inverted index mapping entity names to note paths. Entities are extracted per-note during indexing via LLM (Qwen3:4b) and stored as:
@@ -244,7 +254,7 @@ Notes are split into overlapping chunks to stay within Ollama's embedding limit:
 4. Used by the `ask_agent` MCP tool
 
 ### Embedding Model Switching
-1. MCP tool `switch_embedding_model` verifies the model exists in Ollama
+1. MCP tool `switch_embedding_model` verifies the model exists in the configured embed provider
 2. Clears embedding cache, resets ChromaDB collection, updates config
 3. Triggers full re-index with the new model
 

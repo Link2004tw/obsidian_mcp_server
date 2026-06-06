@@ -23,16 +23,35 @@ ollama pull qwen3:4b
 
 ### 3. Configure environment
 
-Create `.env` in the project root:
+Create `.env` in the project root. For Ollama (default):
 
 ```env
 OBSIDIAN_HOST=localhost
 OBSIDIAN_PORT=27123
 OBSIDIAN_API_KEY=your_api_key_here
 
+LLM_PROVIDER=ollama
+EMBED_PROVIDER=ollama
+
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_EMBED_MODEL=nomic-embed-text
 OLLAMA_CHAT_MODEL=qwen3:4b
+
+VAULT_PATH=C:/Users/you/your-vault
+CHROMA_PATH=data/chroma_db
+```
+
+Or for OpenAI / OpenAI-compatible (Groq, Together, vLLM):
+
+```env
+OBSIDIAN_HOST=localhost
+OBSIDIAN_PORT=27123
+OBSIDIAN_API_KEY=your_api_key_here
+
+LLM_PROVIDER=openai
+EMBED_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+# OPENAI_BASE_URL=https://api.groq.com/openai/v1  # swap for Groq
 
 VAULT_PATH=C:/Users/you/your-vault
 CHROMA_PATH=data/chroma_db
@@ -167,6 +186,7 @@ All tools that accept a `path` parameter auto-normalize it — you can pass abso
 | `list_entities` | List entities with optional type filter |
 | `add_entity` | Register a new entity with metadata |
 | `merge_entities` | Merge duplicate entities in the index |
+| `import_entities` | Import entities from another vault with configurable dedup |
 | `entity_timeline` | Show timeline of entity mentions across notes |
 | `related_entities` | Find related entities via relationship graph |
 | `get_ranking_weights` | View current ranking weights for entity/keyword/graph |
@@ -227,7 +247,12 @@ obsidian_mcp_server_test/
 │       ├── logger.py                # Shared logging module
 │       ├── frontmatter.py           # YAML frontmatter parsing/manipulation
 │       ├── obsidian_client.py       # Obsidian REST API wrapper
-│       ├── llm_client.py            # Ollama embedding + chat wrapper
+│       ├── llm_client.py            # LLM provider abstraction (embeddings + chat)
+│       ├── providers/               # Pluggable LLM backends
+│       │   ├── __init__.py          # Provider registry & factory
+│       │   ├── base.py              # Abstract BaseLLMProvider
+│       │   ├── ollama.py            # Ollama provider (default)
+│       │   └── openai_provider.py   # OpenAI / Groq / Together / vLLM provider
 │       ├── chroma_store.py          # ChromaDB vector storage
 │       ├── indexer.py               # Indexing orchestration + file watcher
 │       ├── chunker.py               # Phase 1: chunk, embed, store (no LLM)
@@ -237,6 +262,7 @@ obsidian_mcp_server_test/
 │       ├── summarize_pipeline.py    # Summary generation pipeline
 │       ├── ranker.py                # Unified ranking (semantic + entity + graph + keyword)
 │       ├── entity_relations.py      # Entity relationship graph store
+│       ├── entity_resolver.py       # Cross-vault entity resolution & import
 │       ├── summary_store.py         # Summary embedding storage
 │       ├── pipelines.py             # Query & action pipelines (LLM-powered)
 │       ├── entity_store.py          # Entity extraction and inverted index
@@ -502,14 +528,20 @@ mcpServers:
 | `OBSIDIAN_HOST` | `localhost` | Obsidian REST API host |
 | `OBSIDIAN_PORT` | `27123` | Obsidian REST API port |
 | `OBSIDIAN_API_KEY` | — | API key from Obsidian Local REST API plugin |
+| `LLM_PROVIDER` | `ollama` | Chat provider: `ollama` or `openai` |
+| `EMBED_PROVIDER` | `ollama` | Embedding provider: `ollama` or `openai` |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
-| `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Embedding model name |
-| `OLLAMA_CHAT_MODEL` | `qwen3:4b` | Chat/LLM model name |
+| `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Ollama embedding model name |
+| `OLLAMA_CHAT_MODEL` | `qwen3:4b` | Ollama chat/LLM model name |
+| `OPENAI_API_KEY` | — | API key for OpenAI / compatible APIs |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Base URL (swap for Groq, Together, vLLM) |
+| `OPENAI_CHAT_MODEL` | `gpt-4o-mini` | OpenAI chat model name |
+| `OPENAI_EMBED_MODEL` | `text-embedding-3-small` | OpenAI embedding model name |
 | `VAULT_PATH` | — | Absolute path to the Obsidian vault (required for file watcher) |
 | `CHROMA_PATH` | `data/chroma_db` | ChromaDB persistent storage path |
 | `DATA_DIR` | `data` | Override data storage root |
 | `READ_WORKERS` | `2` | Parallel note readers for initial fetch |
-| `LLM_CHAT_CONCURRENCY` | `1` | Max concurrent Ollama chat calls during indexing |
+| `LLM_CHAT_CONCURRENCY` | `1` | Max concurrent chat calls during indexing |
 | `INDEX_BATCH_SIZE` | `50` | Notes per index batch |
 | `EMBED_WORKER_FLOOR` | `1` | Min embedding worker threads |
 | `EMBED_WORKER_CEIL` | `2` | Max embedding worker threads |

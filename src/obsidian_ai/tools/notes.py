@@ -27,10 +27,13 @@ log = get_logger("obsidian_ai.tools.notes")
 
 
 def read_note(path: str) -> str:
-    """Read the full content of a note by path.
+    """Read a note's full content from the vault. Use this when you need to see the complete text of a specific note.
 
     Args:
-        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
+        path: vault-relative path to the note, e.g. ``"Folder/Note.md"``. This is not a full filesystem path.
+
+    Returns:
+        The full Markdown content of the note as a string, including YAML frontmatter if present. Returns an error message string prefixed with ``"Error: "`` on failure.
     """
     path = _normalize_path(path)
     log.info(f"read_note — {path}")
@@ -44,12 +47,15 @@ def read_note(path: str) -> str:
 
 
 def write_note(path: str, content: str, sync: bool = True) -> str:
-    """Create or overwrite a note with the given content.
+    """Create a new note or overwrite an existing one with the given Markdown content. Use this to persist notes to the vault programmatically.
 
     Args:
-        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
-        content: Markdown content to write.
-        sync: if True (default), re-index the note so it's immediately searchable.
+        path: vault-relative path, e.g. ``"Folder/Note.md"``. This is not a full filesystem path.
+        content: Full Markdown content to write. May include YAML frontmatter (``---`` delimited) at the top.
+        sync: If ``True`` (default), re-index the note after writing so it's immediately searchable. Set to ``False`` when writing many notes in a batch to defer indexing.
+
+    Returns:
+        A confirmation string like ``"Written: Folder/Note.md"``. If frontmatter has validation warnings, they are appended. Returns an error message string prefixed with ``"Error: "`` on failure.
     """
     path = _normalize_path(path)
     log.info(f"write_note — {path} — {len(content)} chars")
@@ -69,7 +75,11 @@ def write_note(path: str, content: str, sync: bool = True) -> str:
 
 
 def list_all_notes() -> list[str]:
-    """Return a list of all note paths in the vault."""
+    """List every note in the vault. Use this when you need an overview of all available notes, or to discover what exists before calling other tools.
+
+    Returns:
+        A list of vault-relative path strings (e.g. ``["Folder/Note.md", "Other/doc.md"]``). Returns an empty list on failure.
+    """
     log.info("list_all_notes")
     try:
         notes = obsidian_client.list_all_notes()
@@ -81,10 +91,13 @@ def list_all_notes() -> list[str]:
 
 
 def list_folder(folder_path: str) -> list[str]:
-    """Return entries directly inside a specific folder (non-recursive).
+    """List notes and subfolders directly inside a specific folder (non-recursive, one level only). Use this to browse a folder's immediate contents without descending into subfolders.
 
     Args:
-        folder_path: vault-relative folder path, e.g. ``"Folder"`` or ``""`` for root — not a full filesystem path.
+        folder_path: vault-relative folder path, e.g. ``"Folder"`` or ``""`` for the vault root. This is not a full filesystem path.
+
+    Returns:
+        A list of entry names (files and subfolder names) directly inside the folder. Subfolder names have a trailing ``/``. Returns an empty list on failure.
     """
     folder_path = _normalize_path(folder_path)
     log.info(f"list_folder — {folder_path}")
@@ -98,10 +111,13 @@ def list_folder(folder_path: str) -> list[str]:
 
 
 def list_folder_deep(folder_path: str) -> list[str]:
-    """Return a list of note paths within a specific folder (recursive).
+    """List all note paths recursively within a specific folder, including nested subfolders. Use this when you need every note under a directory tree.
 
     Args:
-        folder_path: vault-relative folder path, e.g. ``"Folder"`` or ``""`` for root — not a full filesystem path.
+        folder_path: vault-relative folder path, e.g. ``"Folder"`` or ``""`` for the entire vault. This is not a full filesystem path.
+
+    Returns:
+        A list of vault-relative path strings for every note found recursively under the folder. Returns an empty list on failure.
     """
     folder_path = _normalize_path(folder_path)
     log.info(f"list_folder_deep — {folder_path}")
@@ -115,7 +131,15 @@ def list_folder_deep(folder_path: str) -> list[str]:
 
 
 def search_by_tags(tags: list[str], n: int = 10) -> list[dict]:
-    """Find notes that have ALL of the given YAML frontmatter tags."""
+    """Find notes that have ALL of the given YAML frontmatter tags (AND logic). Use this when you need to locate notes by their tag metadata rather than by semantic content.
+
+    Args:
+        tags: list of tag strings to match. Only notes containing every tag in this list are returned (intersection).
+        n: maximum number of results to return (default 10).
+
+    Returns:
+        A list of dicts, each with keys ``path``, ``title``, ``tags`` (the note's full tag list), and ``snippet`` (a brief content excerpt). Returns an empty list on failure.
+    """
     log.info(f"search_by_tags — tags={tags}, n={n}")
     try:
         results = chroma_store.search_by_tags(tags, n=n)
@@ -139,11 +163,14 @@ def search_by_tags(tags: list[str], n: int = 10) -> list[dict]:
 
 
 def read_note_by_title(title: str, folder_path: str = "") -> str:
-    """Look up a note by its title (filename without extension) and return the full content.
+    """Look up a note by its filename (without ``.md`` extension) and return its full content. Use this when you know the note's title but not its exact vault path, or when you want to find a note across multiple locations.
 
     Args:
-        title: filename without extension, e.g. ``"My Note"``.
-        folder_path: optional vault-relative folder to disambiguate, e.g. ``"Folder"`` — not a full filesystem path.
+        title: filename without the ``.md`` extension, e.g. ``"My Note"``.
+        folder_path: optional vault-relative folder to narrow the search, e.g. ``"Folder"``. If provided, only notes under this folder are considered. Defaults to ``""`` (search the entire vault).
+
+    Returns:
+        The full Markdown content of the note if a single match is found. If multiple notes share the same title, all are returned concatenated with separators. Returns an error message string prefixed with ``"Error: "`` if no note is found.
     """
     folder_path = _normalize_path(folder_path) if folder_path else ""
     log.info(f"read_note_by_title — title={title}, folder_path={folder_path or '(none)'}")
@@ -184,12 +211,15 @@ def read_note_by_title(title: str, folder_path: str = "") -> str:
 
 
 def add_tags(path: str, tags: list[str], sync: bool = True) -> str:
-    """Add tags to a note's YAML frontmatter. Creates frontmatter if absent.
+    """Add one or more tags to a note's YAML frontmatter. Creates frontmatter if the note has none. Use this to apply new tags to a note without affecting existing tags.
 
     Args:
-        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
-        tags: list of tag strings to add.
-        sync: if True (default), re-index the note so changes are reflected in search.
+        path: vault-relative path, e.g. ``"Folder/Note.md"``. This is not a full filesystem path.
+        tags: list of tag strings to add (e.g. ``["project-x", "urgent"]``).
+        sync: If ``True`` (default), re-index the note so the change is reflected in search results. Set to ``False`` when batch-editing notes to defer indexing.
+
+    Returns:
+        A confirmation string showing the updated tag list. Returns an error message string prefixed with ``"Error: "`` on failure.
     """
     path = _normalize_path(path)
     log.info(f"add_tags — {path} — tags={tags}")
@@ -208,12 +238,15 @@ def add_tags(path: str, tags: list[str], sync: bool = True) -> str:
 
 
 def remove_tags(path: str, tags: list[str], sync: bool = True) -> str:
-    """Remove specific tags from a note's YAML frontmatter.
+    """Remove specific tags from a note's YAML frontmatter. Use this to delete one or more tags while keeping all other tags intact.
 
     Args:
-        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
-        tags: list of tags to remove.
-        sync: if True (default), re-index the note so changes are reflected in search.
+        path: vault-relative path, e.g. ``"Folder/Note.md"``. This is not a full filesystem path.
+        tags: list of tag strings to remove (e.g. ``["old-tag"]``). Tags that don't exist are silently ignored.
+        sync: If ``True`` (default), re-index the note so the change is reflected in search results. Set to ``False`` when batch-editing notes to defer indexing.
+
+    Returns:
+        A confirmation string showing the remaining tags. Returns an error message string prefixed with ``"Error: "`` on failure.
     """
     path = _normalize_path(path)
     log.info(f"remove_tags — {path} — tags={tags}")
@@ -232,12 +265,15 @@ def remove_tags(path: str, tags: list[str], sync: bool = True) -> str:
 
 
 def set_tags(path: str, tags: list[str], sync: bool = True) -> str:
-    """Replace all tags on a note with the given list.
+    """Replace all tags on a note with a completely new list. Use this when you want to reset a note's tags entirely, discarding any existing ones.
 
     Args:
-        path: vault-relative path, e.g. ``"Folder/Note.md"`` — not a full filesystem path.
-        tags: new list of tags (replaces all existing).
-        sync: if True (default), re-index the note so changes are reflected in search.
+        path: vault-relative path, e.g. ``"Folder/Note.md"``. This is not a full filesystem path.
+        tags: new list of tag strings to set (replaces all existing tags). Pass an empty list ``[]`` to remove all tags.
+        sync: If ``True`` (default), re-index the note so the change is reflected in search results. Set to ``False`` when batch-editing notes to defer indexing.
+
+    Returns:
+        A confirmation string showing the new tag list. Returns an error message string prefixed with ``"Error: "`` on failure.
     """
     path = _normalize_path(path)
     log.info(f"set_tags — {path} — tags={tags}")
@@ -256,12 +292,15 @@ def set_tags(path: str, tags: list[str], sync: bool = True) -> str:
 
 
 def batch_tag_notes(note_paths: list[str], tags: list[str], sync: bool = True) -> dict[str, str]:
-    """Add tags to multiple notes at once. Returns ``dict[path, result_message]``.
+    """Add the same set of tags to multiple notes at once. Use this when you need to tag many notes in a single operation rather than calling ``add_tags`` repeatedly.
 
     Args:
-        note_paths: list of vault-relative note paths.
-        tags: list of tags to add.
-        sync: if True (default), re-index each note so changes are reflected in search.
+        note_paths: list of vault-relative note paths to tag (e.g. ``["Folder/A.md", "Folder/B.md"]``).
+        tags: list of tag strings to add to each note.
+        sync: If ``True`` (default), re-index each note so changes are reflected in search. Set to ``False`` when processing many notes to defer indexing.
+
+    Returns:
+        A dict mapping each note path to its result message (e.g. ``{"Folder/A.md": "Tags added: [...]"}``). Failed notes have an error message string prefixed with ``"Error: "``.
     """
     log.info("batch_tag_notes — %d notes, tags=%s", len(note_paths), tags)
     results: dict[str, str] = {}
@@ -281,12 +320,15 @@ def batch_tag_notes(note_paths: list[str], tags: list[str], sync: bool = True) -
 
 
 def create_backlink(path_a: str, path_b: str, sync: bool = True) -> str:
-    """Create mutual [[backlinks]] between two notes.
+    """Create bidirectional ``[[wiki-links]]`` between two notes, linking each to the other. Use this to connect related notes in the wiki-link graph so they appear as backlinks to each other.
 
     Args:
-        path_a: vault-relative path to the first note.
-        path_b: vault-relative path to the second note.
-        sync: if True (default), re-index both notes so changes are reflected in search.
+        path_a: vault-relative path to the first note (e.g. ``"Projects/A.md"``).
+        path_b: vault-relative path to the second note (e.g. ``"Projects/B.md"``).
+        sync: If ``True`` (default), re-index both notes so the new links are reflected in search and graph traversal. Set to ``False`` when batch-linking many notes.
+
+    Returns:
+        A confirmation string like ``"Linked: Projects/A.md <-> Projects/B.md"``. Returns an error message string prefixed with ``"Error: "`` on failure.
     """
     path_a = _normalize_path(path_a)
     path_b = _normalize_path(path_b)
@@ -318,14 +360,14 @@ def create_backlink(path_a: str, path_b: str, sync: bool = True) -> str:
 
 
 def sync_index(folder: str | None = None, subject: str | None = None) -> str:
-    """Re-run the full indexer pipeline. Clears the embedding cache and BM25 index.
+    """Re-run the full indexing pipeline — clears the embedding cache and BM25 keyword index, then re-indexes notes. Use this after bulk changes (imports, renames, external edits) to bring the search index up to date.
 
     Args:
-        folder: If set, only re-index notes under this vault-relative folder path.
-               Pass ``None`` (omit) to re-index the entire vault.
-        subject: If set, find all notes mentioning this entity and force-re-index
-                them (re-extract entities, relationships, and summaries via LLM).
-                Mutually exclusive with ``folder``.
+        folder: If set, only re-index notes under this vault-relative folder path (e.g. ``"Projects"``). Pass ``None`` (default) to re-index the entire vault.
+        subject: If set, find all notes mentioning this entity name and force-re-index them, re-extracting entities, relationships, and summaries via LLM. Mutually exclusive with ``folder``.
+
+    Returns:
+        A confirmation string describing what was re-indexed. Returns an error message string prefixed with ``"Error: "`` on failure.
     """
     if subject:
         log.info(f"sync_index — re-indexing notes mentioning subject={subject!r}")
@@ -359,12 +401,15 @@ def sync_index(folder: str | None = None, subject: str | None = None) -> str:
 
 
 def switch_embedding_model(model_name: str) -> str:
-    """Switch the embedding model at runtime.
+    """Switch the embedding model used for semantic search at runtime. Use this to upgrade or change the NLP model powering note similarity and retrieval.
 
-    Updates the config, clears the embed cache, resets the ChromaDB collection,
-    and re-indexes the entire vault with the new model.
+    This operation updates the config, clears the embed cache, resets the ChromaDB collection, and re-indexes the entire vault with the new model. The model must already exist in Ollama — pull it first with ``ollama pull <model_name>``.
 
-    The model must already exist in Ollama (pull it first with ``ollama pull <name>``).
+    Args:
+        model_name: name of the Ollama embedding model to switch to (e.g. ``"nomic-embed-text"``, ``"mxbai-embed-large"``). The model must already be pulled into Ollama.
+
+    Returns:
+        A confirmation string showing the old and new model names. Returns an error message string prefixed with ``"Error: "`` on failure.
     """
     log.info(f"switch_embedding_model — {model_name}")
     try:
@@ -400,37 +445,24 @@ def add_note_to_subject(
     sync: bool = True,
     reindex_matches: bool = True,
 ) -> str:
-    """Add a note to a subject, auto-linking it into the wiki-link graph.
+    """Create a new note under a subject folder and wire it into the wiki-link graph. Use this when you want to add a note that belongs to a specific topic or person, auto-creating a hub note and mutual backlinks.
 
-    Creates the note under ``Subjects/{subject}/{title}.md`` with YAML
-    frontmatter tagged with the subject name plus any extra tags, and a
-    ``[[{subject}]]`` wiki-link to the subject hub note.
+    The note is created at ``Subjects/{subject}/{title}.md`` with YAML frontmatter tagged with the subject name plus any extra tags, and a ``[[{subject}]]`` wiki-link pointing to the subject's hub note.
 
-    The subject hub note (``Subjects/{subject}/{subject}.md``) is created
-    automatically if it doesn't exist. A mutual backlink is added so the
-    new note and hub note are connected in the wiki-link graph.
+    The subject hub note (``Subjects/{subject}/{subject}.md``) is created automatically if it doesn't exist. A mutual backlink is added so the new note and hub note are connected in the wiki-link graph.
 
-    The subject is also registered as an entity (type ``"Concept"``) so it
-    appears in entity searches.
+    The subject is also registered as an entity (type ``"Concept"``) so it appears in entity searches.
 
     Args:
-        subject: subject name (e.g. ``"Maria"``). Used as folder name, tag,
-            and entity name.
-        title: note title (e.g. ``"First Impression"``). Used as filename
-            (without ``.md``).
-        content: Markdown body content. Frontmatter will be auto-generated
-            — do not include a ``---`` header yourself.
-        tags: optional extra tags (e.g. ``["poem", "church"]``). The subject
-            tag is added automatically.
-        sync: if True (default), re-index the new note (and hub if newly created)
-            so they are immediately searchable. Set to False when adding
-            multiple notes to batch indexing into a single sync call.
-        reindex_matches: if True (default), scan the vault for notes that mention
-            the subject name and force-re-index them so they pick up the new
-            entity from the LLM.
+        subject: subject name (e.g. ``"Maria"``). Used as folder name, tag, and entity name.
+        title: note title (e.g. ``"First Impression"``). Used as filename without ``.md`` extension.
+        content: Markdown body content. Frontmatter is auto-generated — do not include your own ``---`` header.
+        tags: optional list of extra tags beyond the subject tag (e.g. ``["poem", "church"]``). The subject name is added as a tag automatically.
+        sync: If ``True`` (default), re-index the new note (and hub if newly created) so they are immediately searchable. Set to ``False`` when adding multiple notes to batch indexing into a single sync call.
+        reindex_matches: If ``True`` (default), scan the vault for existing notes that mention the subject name and force-re-index them so they pick up the new entity from the LLM.
 
     Returns:
-        A confirmation message with the note path.
+        A multi-line confirmation string with the note path, subject, tags, graph link info, entity registration, and re-index count. Returns an error message string prefixed with ``"Error: "`` on failure.
     """
     log.info(f"add_note_to_subject — subject={subject}, title={title}, tags={tags}")
 

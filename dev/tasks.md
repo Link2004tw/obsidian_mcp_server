@@ -299,9 +299,9 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | #    | Task                                                      | Description                                                                                                                                                                                 | Difficulty | Priority | Status |
 | ---- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------- | ------ |
 | 19.1 | Shortest-path query in graph store                        | Implement Dijkstra/BFS shortest-path between two notes in the wiki-link graph; return path with intermediate node list and hop count; expose as `get_shortest_path` MCP tool                 | Medium     | P2       | ✅     |
-| 19.2 | Graph analytics dashboard (export)                        | Generate a standalone HTML dashboard with graph metrics (degree distribution, connected components, clustering coefficient); export alongside current DOT/JSON output                         | Medium     | P3       | ❌     |
-| 19.3 | Graph clustering metrics enhancement                      | Improve community detection with modularity scoring; report community quality in `get_graph_stats`; add per-community member listing                                                          | Low        | P3       | ❌     |
-| 19.4 | Cross-vault entity resolution (multi-vault support)        | Support entity matching across multiple Obsidian vaults; merge entity indices from different vaults with configurable dedup thresholds                                                        | High       | P3       | ❌     |
+| 19.2 | Graph analytics dashboard (export)                        | Generate a standalone HTML dashboard with graph metrics (degree distribution, connected components, clustering coefficient); export alongside current DOT/JSON output                         | Medium     | P3       | ✅     |
+| 19.3 | Graph clustering metrics enhancement                      | Improve community detection with modularity scoring; report community quality in `get_graph_stats`; add per-community member listing                                                          | Low        | P3       | ✅     |
+| 19.4 | Cross-vault entity resolution (multi-vault support)        | Support entity matching across multiple Obsidian vaults; merge entity indices from different vaults with configurable dedup thresholds                                                        | High       | P3       | ✅     |
 | 19.5 | Composite index: entity + graph + summary search          | Combine summary embedding search, entity-relationship expansion, and community-aware graph traversal into a single high-recall retrieval mode; configurable via `retrieval_depth` parameter   | High       | P2       | ✅     |
 
 ---
@@ -310,10 +310,27 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 
 | #    | Task                                                      | Description                                                                                                                                                                                 | Difficulty | Priority | Status |
 | ---- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------- | ------ |
-| 20.1 | Query intent detection for dynamic ranking weights         | Automatically detect query type (entity lookup, concept exploration, keyword search) and adjust ranking weights accordingly; e.g., "who is Alice" → boost entity, "PID tuning" → boost keyword | Medium     | P2       | ❌     |
-| 20.2 | Frontmatter YAML validation before write                   | Add `_validate_frontmatter()` to reject invalid YAML in `write_note` before sending to Obsidian API — prevents silent corruption                                                              | Low        | P2       | ❌     |
-| 20.3 | Structured search performance logging                      | Add `log_search(query, results_count, signals, duration_ms)` helper; include timing in all search/retrieve operations for observability                                                      | Low        | P3       | ❌     |
-| 20.4 | Chunk-level delta indexing                                 | When a note changes, diff old vs new chunks and only re-embed changed ones instead of delete-all + re-embed-all — requires caching previous chunk content per note                           | Medium     | P2       | ❌     |
+| 20.1 | Query intent detection for dynamic ranking weights         | Automatically detect query type (entity lookup, concept exploration, keyword search) and adjust ranking weights accordingly; e.g., "who is Alice" → boost entity, "PID tuning" → boost keyword | Medium     | P2       | ✅     |
+| 20.2 | Frontmatter YAML validation before write                   | Add `_validate_frontmatter()` to reject invalid YAML in `write_note` before sending to Obsidian API — prevents silent corruption                                                              | Low        | P2       | ✅     |
+| 20.3 | Structured search performance logging                      | Add `log_search(query, results_count, signals, duration_ms)` helper; include timing in all search/retrieve operations for observability                                                      | Low        | P3       | ✅     |
+| 20.4 | Chunk-level delta indexing                                 | When a note changes, diff old vs new chunks and only re-embed changed ones instead of delete-all + re-embed-all — requires caching previous chunk content per note                           | Medium     | P2       | ✅     |
+| **Phase 20 Total**                                            | **4**       | **0**     | **3**     | **1**     | **4**     | **0**         |
+
+---
+
+## Phase 21 — Multi-Provider LLM Support
+
+| #    | Task                                                            | Description                                                                                                                                                                                 | Difficulty | Priority | Status |
+| ---- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------- | ------ |
+| 21.1 | Create abstract `BaseLLMProvider` interface                     | Define ABC with `embed()`, `batch_embed()`, `chat()`, `chat_safe()`, `is_available()`, `check_health()`, `switch_embed_model()`, `clear_embed_cache()`, `embed_cache_info()`               | Low        | P1       | ✅     |
+| 21.2 | Refactor Ollama client into `OllamaProvider` class              | Move Ollama-specific logic from `llm_client.py` into `providers/ollama.py`; keep retry logic, availability check, health check, embed, batch_embed, chat                                    | Medium     | P1       | ✅     |
+| 21.3 | Implement `OpenAIProvider` class                                | Support OpenAI + compatible APIs (Groq, Together, vLLM) via `openai` SDK; configurable base URL, model names, API key                                                                       | Medium     | P1       | ✅     |
+| 21.4 | Create provider registry & factory in `providers/__init__.py`  | `PROVIDER_MAP` dict and `get_provider(name)` factory with unknown-provider fallback to Ollama                                                                                                | Low        | P1       | ✅     |
+| 21.5 | Add provider selection env vars to `config.py`                  | `LLM_PROVIDER`, `EMBED_PROVIDER`, `OPENAI_API_KEY` (masked), `OPENAI_BASE_URL`, `OPENAI_CHAT_MODEL`, `OPENAI_EMBED_MODEL`; update `validate()` to check both providers                      | Low        | P1       | ✅     |
+| 21.6 | Refactor `llm_client.py` to delegate to provider instances     | Replace direct Ollama calls with `_get_chat_provider()` / `_get_embed_provider()`; keep shared embedding cache (LRU + persistent); preserve backward-compatible public API                  | Medium     | P1       | ✅     |
+| 21.7 | Add `openai` optional dependency in `pyproject.toml`           | `openai>=1.0` under `[project.optional-dependencies] openai`                                                                                                                                | Low        | P1       | ✅     |
+| 21.8 | Update documentation for multi-provider support                 | Update README, setup.md, architecture.md, .env.example with provider selection, OpenAI config examples, new env vars                                                                        | Low        | P2       | ✅     |
+| **Phase 21 Total**                                              | **8**       | **7**     | **1**     | **0**     | **8**     | **0**         |
 
 ---
 
@@ -339,6 +356,7 @@ All tasks are organized by phase. Difficulty: `Low` / `Medium` / `High`. Priorit
 | Phase 16 — Performance Optimizations                        | 10          | 1      | 6      | 3      | 10     | 0         |
 | Phase 17 — Entity Resolution & Relationships                | 9           | 0      | 5      | 4      | 9      | 0         |
 | Phase 18 — Retrieval Quality & Evaluation                   | 10          | 2      | 6      | 2      | 10     | 0         |
-| Phase 19 — Knowledge Graph & Analytics                      | 5           | 0      | 2      | 3      | 2      | 3         |
-| Phase 20 — Quality-of-Life Improvements                    | 4           | 0      | 3      | 1      | 0      | 4         |
-| **Total**                                                   | **171**     | **50** | **74** | **47** | **166** | **5**     |
+| Phase 19 — Knowledge Graph & Analytics                      | 5           | 0      | 2      | 3      | 5      | 0         |
+| Phase 20 — Quality-of-Life Improvements                    | 4           | 0      | 3      | 1      | 4      | 0         |
+| Phase 21 — Multi-Provider LLM Support                      | 8           | 7      | 1      | 0      | 8      | 0         |
+| **Total**                                                   | **179**     | **57** | **75** | **47** | **179** | **0**     |
