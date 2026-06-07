@@ -1,9 +1,12 @@
 """Obsidian AI MCP server — tool registration, re-exports, and entry point."""
 
+import logging
+import os
+
 from fastmcp import FastMCP
 
 from . import config
-from .logger import get_logger
+from .logger import LOG_DIR, LOG_FORMAT, DATE_FORMAT, MAX_BYTES, BACKUP_COUNT, get_logger
 from .tools import register_all
 from .tools._shared import (  # noqa: F401
     _EXPAND_QUERY_CACHE,
@@ -28,6 +31,16 @@ from .tools.todo import todo  # noqa: F401
 from .tools.tools import tools  # noqa: F401
 
 log = get_logger("obsidian_ai.mcp_server", log_file="mcp_calls.log")
+
+root = logging.getLogger()
+if not any(isinstance(h, logging.handlers.RotatingFileHandler) for h in root.handlers):
+    fh = logging.handlers.RotatingFileHandler(
+        os.path.join(LOG_DIR, "mcp_calls.log"),
+        maxBytes=MAX_BYTES, backupCount=BACKUP_COUNT, encoding="utf-8",
+    )
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT))
+    root.addHandler(fh)
 
 mcp = FastMCP("obsidian-ai")
 register_all(mcp)

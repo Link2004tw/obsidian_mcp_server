@@ -135,11 +135,11 @@ Each tool (except `ask` and `tools`) takes an `action` parameter — this replac
 | Tool | Description |
 |------|-------------|
 | `ask(query)` | **Universal discovery tool.** Routes any query to the right internal capability via LLM intent detection — handles search, Q&A, entities, graph, summaries, tags, stats, and more |
-| `notes(action, ...)` | Note CRUD: read, write, list, list_folder, search_by_tags, read_by_title, add_note_to_subject |
+| `notes(action, ...)` | Note CRUD: read, write, list, list_folder, search_by_tags, read_by_title, read_by_subject, add_note_to_subject |
 | `tags(action, ...)` | YAML frontmatter tags: add, remove, set, batch_add, auto_suggest |
 | `links(action, ...)` | Wiki-link operations: create, backlinks, outgoing, broken |
 | `graph(action, ...)` | Graph exploration: communities, community_of, orphans, path, stats, related, traverse, export |
-| `entities(action, ...)` | Entity management: search, note_entities, list, aliases, timeline, related, add, merge, change_type, types, weights, import |
+| `entities(action, ...)` | Entity management: search, note_entities, list, aliases, timeline, related, add, link_note, merge, change_type, types, weights, import |
 | `todo(action, ...)` | Task management: list, add, complete, update, delete, stats, suggestions, link, ask |
 | `admin(action, ...)` | Administration: health, reindex, stats, switch_model, sync_todos |
 | `tools()` | Tool discovery — list all tools with descriptions and parameter schemas |
@@ -531,7 +531,7 @@ obsidian-ai search-by-tags project
 ```bash
 obsidian-ai add-note-to-subject ESP32 "PCB Rev3 Design" \
   "Notes about the ESP32 PCB revision 3 design."
-# → Creates note under Subjects/ESP32/, adds [[ESP32]] backlink
+# → Creates note organized under subject ESP32, adds backlink and entity registration
 ```
 
 ---

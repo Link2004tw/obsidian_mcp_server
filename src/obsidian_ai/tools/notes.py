@@ -7,12 +7,12 @@ import re
 from .. import indexer, obsidian_client
 from ..frontmatter import validate as fm_validate
 from ..logger import get_logger, log_error
-from ._shared import _normalize_path
+from ._shared import _filter_subjects, _normalize_path
 from ._tool_base import build_tool
 
 log = get_logger("obsidian_ai.tools.notes")
 
-_VALID_ACTIONS = {"read", "write", "list", "list_folder", "search_by_tags", "read_by_title", "add_note_to_subject"}
+_VALID_ACTIONS = {"read", "write", "list", "list_folder", "search_by_tags", "read_by_title", "read_by_subject", "add_note_to_subject"}
 
 
 def _handle_read(path: str) -> str:
@@ -50,6 +50,8 @@ def _handle_search_by_tags(tags: list[str], n: int = 10) -> str:
     results = chroma_store.search_by_tags(tags, n=n)
     out = []
     for r in results:
+        if r["path"].startswith("Subjects/"):
+            continue
         raw = r.get("tags_str", "")
         note_tags = [t for t in raw.strip(",").split(",") if t] if raw else []
         out.append({
@@ -75,15 +77,44 @@ def _handle_read_by_title(title: str, folder_path: str = "") -> str:
         if not filtered:
             return f'Error: No note with title "{title}" found in folder: {folder_path}'
         paths = filtered
+    paths = [p for p in paths if not p.startswith("Subjects/")]
+    if not paths:
+        return f"Error: No note found with title: {title}"
 
     if len(paths) == 1:
-        return obsidian_client.get_note(paths[0])
+        content = obsidian_client.get_note(paths[0])
+        return f"\u2500\u2500\u2500 {paths[0]} \u2500\u2500\u2500\n{content}"
 
     parts = []
     for p in paths:
         content = obsidian_client.get_note(p)
         parts.append(f"\u2500\u2500\u2500 {p} \u2500\u2500\u2500\n{content}")
     return f'Found {len(paths)} notes with title "{title}":\n\n' + "\n\n".join(parts)
+
+
+def _handle_read_by_subject(subject: str, n: int = 10) -> str:
+    from ._shared import (
+        _apply_entity_search,
+        _apply_graph_boost,
+        _apply_summary_search,
+        _expand_query,
+        _group_by_note,
+        _hybrid_search,
+    )
+    expanded = _expand_query(subject)
+    queries = [subject] + expanded
+
+    results = _hybrid_search(queries=queries, n=n * 2, keyword_weight=0.3)
+    results = _apply_entity_search(results, subject)
+    results = _apply_graph_boost(results, graph_depth=1, graph_weight=0.2)
+    results = _apply_summary_search(results, subject, n=n)
+    results = _group_by_note(results, n)
+
+    results.sort(key=lambda p: p["similarity_score"], reverse=True)
+
+    if not results:
+        return json.dumps({"error": f"No notes found about '{subject}'."})
+    return json.dumps(results, ensure_ascii=False, indent=2)
 
 
 def _handle_add_note_to_subject(
@@ -98,7 +129,14 @@ def _handle_add_note_to_subject(
     from ._shared import _find_notes_mentioning
 
     safe_subject = re.sub(r'[<>:"/\\|?*]', "", subject).strip() or "untitled"
-    safe_title = re.sub(r'[<>:"/\\|?*]', "", title).strip() or "untitled"
+    if not title or not title.strip():
+        first_line = next(
+            (line.strip().lstrip("#").strip() for line in content.split("\n")
+             if line.strip().lstrip("#").strip()),
+            "",
+        )
+        title = first_line[:60] if first_line else f"{safe_subject}-note"
+    safe_title = re.sub(r'[<>:"/\\|?*]', "", title).strip() or safe_subject
     safe_subject_lower = safe_subject.casefold().replace(" ", "-")
 
     folder = f"Subjects/{safe_subject}"
@@ -190,6 +228,7 @@ _HANDLERS = {
     "list_folder": _handle_list_folder,
     "search_by_tags": _handle_search_by_tags,
     "read_by_title": _handle_read_by_title,
+    "read_by_subject": _handle_read_by_subject,
     "add_note_to_subject": _handle_add_note_to_subject,
 }
 
@@ -216,14 +255,15 @@ def notes(
                 ``list_folder`` — list notes/subfolders in a folder.
                 ``search_by_tags`` — find notes with all given YAML frontmatter tags (AND logic).
                 ``read_by_title`` — look up a note by filename (without ``.md``) and read it.
-                ``add_note_to_subject`` — create a note under Subjects/ with auto hub and backlinks.
+                ``read_by_subject`` — search for notes about a broad subject/person/concept via LLM expansion.
+                ``add_note_to_subject`` — create a note organized under a subject with auto hub note, backlinks, and entity registration.
         path: vault-relative path for read/write actions.
         content: Markdown body content (for write and add_note_to_subject).
         folder: vault-relative folder path for list_folder and read_by_title.
         title: note title (filename without ``.md``) for read_by_title and add_note_to_subject.
         tags: list of tag strings for search_by_tags.
-        n: max results for search_by_tags (default 10).
-        subject: subject name for add_note_to_subject (e.g. ``"Maria"``).
+        n: max results for search_by_tags and read_by_subject (default 10).
+        subject: subject name for read_by_subject and add_note_to_subject (e.g. ``"Maria"``).
         sync: if True (default), re-index after write/add_note_to_subject.
         reindex_matches: if True (default), re-index existing notes mentioning the subject.
 
@@ -248,6 +288,8 @@ def notes(
             return handler(tags=tags or [], n=n)
         elif action == "read_by_title":
             return handler(title=title, folder_path=folder)
+        elif action == "read_by_subject":
+            return handler(subject=subject, n=n)
         elif action == "add_note_to_subject":
             return handler(subject=subject, title=title, content=content, tags=tags, sync=sync, reindex_matches=reindex_matches)
         else:

@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.3.1 (2026-06-07)
+
+### New Actions
+- **`notes(action=read_by_subject)`** — search for notes by subject/topic using LLM expansion + entity/graph/summary augmentation pipeline
+- **`entities(action=link_note)`** — associate an existing note with an entity (creates entity if needed)
+
+### Improvements
+- **Structural Subjects folder hidden from search** — `read_by_title`, `search_by_tags`, `entities search` exclude `Subjects/` results; model tool descriptions no longer expose the internal path
+- **`read_by_title` now returns path** — single-match responses include the note path header
+- **`add_note_to_subject` auto-generates title** — when title omitted, extracts first meaningful line from content (no more "untitled" notes)
+- **Root-level file logging** — all tool dispatch, search, and error logs captured in `logs/mcp_calls.log`
+
+### Fixes
+- Subjects folder hub notes no longer clutter search results
+
+---
+
 ## v0.3.0 (2026-06-07)
 
 ### Tool Consolidation — 50+ tools → 9 dispatch tools

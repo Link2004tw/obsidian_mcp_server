@@ -58,3 +58,5 @@ dashboard.html
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+
+data/graph.json

@@ -10,7 +10,7 @@ from ._tool_base import build_tool
 
 log = get_logger("obsidian_ai.tools.entities")
 
-_VALID_ACTIONS = {"search", "note_entities", "list", "aliases", "timeline", "related", "add", "merge", "change_type", "types", "weights_set", "weights_get", "import"}
+_VALID_ACTIONS = {"search", "note_entities", "list", "aliases", "timeline", "related", "add", "link_note", "merge", "change_type", "types", "weights_set", "weights_get", "import"}
 
 
 def _handle_search(entity_name: str, entity_type: str | None = None, n: int = 10, use_graph: bool = False) -> str:
@@ -39,6 +39,7 @@ def _handle_search(entity_name: str, entity_type: str | None = None, n: int = 10
         except Exception:
             pass
 
+    results = [r for r in results if not r.get("path", "").startswith("Subjects/")]
     results = results[:n]
 
     if use_graph and results:
@@ -59,6 +60,7 @@ def _handle_search(entity_name: str, entity_type: str | None = None, n: int = 10
                     })
         results = results[:n]
 
+    results = [r for r in results if not r.get("path", "").startswith("Subjects/")]
     return json.dumps(results, ensure_ascii=False, indent=2) if results else f"No notes found mentioning \"{entity_name}\"."
 
 
@@ -150,6 +152,18 @@ def _handle_add(name: str, entity_type: str = "Concept", aliases: list[str] | No
     return "\n".join(lines)
 
 
+def _handle_link_note(name: str, path: str, entity_type: str | None = None) -> str:
+    path = _normalize_path(path)
+    etype = entity_type or "Concept"
+    entity_store.add_manual_entity(name, etype)
+    entity_store.add(name=name, type=etype, confidence=1.0, path=path, chunk_idx=0, context="(manually linked via link_note)")
+    if not graph_store.has_entity_edge(etype, name, path):
+        graph_store.add_entity_edge(etype, name, path)
+        graph_store.flush()
+    indexer.index_note(path, force=True)
+    return f'Note linked: "{path}" → entity "{name}" ({etype})'
+
+
 def _handle_merge(primary: str, secondary: str) -> str:
     result = entity_store.merge(primary, secondary)
     if result is None:
@@ -222,6 +236,7 @@ _HANDLERS = {
     "timeline": _handle_timeline,
     "related": _handle_related,
     "add": _handle_add,
+    "link_note": _handle_link_note,
     "merge": _handle_merge,
     "change_type": _handle_change_type,
     "types": _handle_types,
@@ -267,6 +282,7 @@ def entities(
                 ``timeline`` — show chronological timeline of events for an entity.
                 ``related`` — discover entities connected via the relationship graph.
                 ``add`` — manually create a new entity with aliases and relations.
+                ``link_note`` — associate an existing note with an entity (creates entity if needed).
                 ``merge`` — merge two entity records into one.
                 ``change_type`` — correct the classification type of an entity.
                 ``types`` — list all available entity type labels.
@@ -276,7 +292,7 @@ def entities(
         name: entity name (for aliases, timeline, related, change_type).
         entity_name: entity name to search for (for search action).
         entity_type: optional type filter (Person, Project, etc.).
-        path: vault-relative note path (for note_entities).
+        path: vault-relative note path (for note_entities, link_note).
         n: max results (default 50).
         aliases: alias strings (for add).
         relations: relationship dicts (for add).
@@ -316,6 +332,8 @@ def entities(
             return handler(name=name, relation_type=relation_type, depth=depth)
         elif action == "add":
             return handler(name=name, entity_type=entity_type or "Concept", aliases=aliases, relations=relations, reindex_matches=reindex_matches)
+        elif action == "link_note":
+            return handler(name=name, path=path, entity_type=entity_type)
         elif action == "merge":
             return handler(primary=primary, secondary=secondary)
         elif action == "change_type":

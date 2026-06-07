@@ -48,7 +48,8 @@ Handles: semantic search, Q&A, entity lookup, relationship discovery, wiki-link 
 | `list_folder` | List entries in a folder (non-recursive) | `folder` |
 | `search_by_tags` | Find notes with all given YAML tags (AND) | `tags`, `n` |
 | `read_by_title` | Look up note by filename | `title`, `folder` |
-| `add_note_to_subject` | Create note under Subjects/ with auto hub + backlinks | `subject`, `title`, `content`, `tags` |
+| `read_by_subject` | Search for notes about a subject via LLM expansion + entity/graph/summary pipeline | `subject`, `n` |
+| `add_note_to_subject` | Create note organized under a subject with auto hub note, backlinks, and entity registration | `subject`, `title`, `content`, `tags` |
 
 ---
 
@@ -109,6 +110,7 @@ Handles: semantic search, Q&A, entity lookup, relationship discovery, wiki-link 
 | `timeline` | Chronological event timeline for an entity | `name`, `date_from`, `date_to` |
 | `related` | Entities connected via relationship graph | `name`, `relation_type`, `depth` |
 | `add` | Manually create an entity with aliases + relations | `name`, `entity_type`, `aliases`, `relations` |
+| `link_note` | Associate an existing note with an entity (creates entity if needed) | `name`, `path`, `entity_type` |
 | `merge` | Merge two entity records | `primary`, `secondary` |
 | `change_type` | Correct entity classification type | `name`, `new_type` |
 | `types` | List all available entity type labels | — |

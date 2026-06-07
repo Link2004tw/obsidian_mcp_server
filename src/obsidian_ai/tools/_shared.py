@@ -578,6 +578,11 @@ def _apply_graph_boost(passages: list[dict], graph_depth: int = 1, graph_weight:
     return sorted(passages, key=lambda x: x["similarity_score"], reverse=True)
 
 
+def _filter_subjects(results: list[dict]) -> list[dict]:
+    """Remove any results from the Subjects/ structural folder."""
+    return [r for r in results if not r.get("path", "").startswith("Subjects/")]
+
+
 def _apply_summary_search(
     passages: list[dict],
     query: str,
