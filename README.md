@@ -126,121 +126,42 @@ Use `obsidian-ai <command>` (if installed) or `python cli.py <command>`.
 
 ---
 
-## MCP Tools (70 total)
+## MCP Tools (9 total)
 
 All tools that accept a `path` parameter auto-normalize it — you can pass absolute paths or vault-relative paths interchangeably. The vault prefix is stripped automatically.
 
-### Search & Retrieval
-| Tool | Description |
-|------|-------------|
-| `search_notes` | Semantic search with metadata filters, optional auto-rewrite, TTL-cached query expansion |
-| `batch_search` | Run multiple searches in one call |
-| `composite_search` | High-recall composite search (summary + entity + community) |
-| `retrieve_notes` | Multi-strategy retrieval (semantic + entity + graph) |
-| `find_duplicate_notes` | Find near-duplicate notes via embedding similarity |
-| `search_by_tags` | Find notes by YAML frontmatter tags |
-| `search_entities` | Find notes mentioning a specific entity |
-| `get_subject` | Get notes related to a free-form subject |
+Each tool (except `ask` and `tools`) takes an `action` parameter — this replaces ~50 specialized tools with 9 dispatch tools.
 
-### Reading & Writing
 | Tool | Description |
 |------|-------------|
-| `read_note` | Fetch full note content |
-| `write_note` | Create or overwrite a note (YAML-validated) |
-| `list_all_notes` | List all note paths in the vault |
-| `list_folder` | List entries directly in a folder (non-recursive) |
-| `list_folder_deep` | List all notes in a folder (recursive) |
-| `read_note_by_title` | Look up a note by its filename |
-| `add_note_to_subject` | Create a note and auto-link it into a subject |
+| `ask(query)` | **Universal discovery tool.** Routes any query to the right internal capability via LLM intent detection — handles search, Q&A, entities, graph, summaries, tags, stats, and more |
+| `notes(action, ...)` | Note CRUD: read, write, list, list_folder, search_by_tags, read_by_title, add_note_to_subject |
+| `tags(action, ...)` | YAML frontmatter tags: add, remove, set, batch_add, auto_suggest |
+| `links(action, ...)` | Wiki-link operations: create, backlinks, outgoing, broken |
+| `graph(action, ...)` | Graph exploration: communities, community_of, orphans, path, stats, related, traverse, export |
+| `entities(action, ...)` | Entity management: search, note_entities, list, aliases, timeline, related, add, merge, change_type, types, weights, import |
+| `todo(action, ...)` | Task management: list, add, complete, update, delete, stats, suggestions, link, ask |
+| `admin(action, ...)` | Administration: health, reindex, stats, switch_model, sync_todos |
+| `tools()` | Tool discovery — list all tools with descriptions and parameter schemas |
 
-### Tag Management
-| Tool | Description |
-|------|-------------|
-| `add_tags` | Add tags to YAML frontmatter |
-| `remove_tags` | Remove specific tags from YAML frontmatter |
-| `set_tags` | Replace all tags on a note |
-| `batch_tag_notes` | Add tags to multiple notes at once |
-| `tag_notes` | Auto-suggest and apply tags via LLM |
+### Quick Examples
 
-### Wiki-Link Graph
-| Tool | Description |
-|------|-------------|
-| `create_backlink` | Create mutual backlinks between two notes |
-| `get_backlinks` | Return notes linking TO a given note |
-| `get_linked_notes` | Return notes a given note links TO |
-| `get_broken_links` | Find unresolved wiki-links |
-| `get_orphan_notes` | Find notes with no wiki-links |
-| `get_graph_stats` | Graph statistics (nodes, edges, hubs, isolates) |
-| `get_communities` | Detect communities via label propagation |
-| `get_note_community` | Show which community a note belongs to |
-| `multi_hop_traversal` | BFS graph traversal from a seed note |
-| `related_notes` | Find related notes via semantic + graph proximity |
-| `export_graph` | Export wiki-link graph in DOT/JSON |
-| `get_shortest_path` | Find shortest path between two notes in the graph |
+```bash
+# Ask anything — the tool figures out what to do
+obsidian-ai ask "What do I have about machine learning?"
 
-### LLM-Powered
-| Tool | Description |
-|------|-------------|
-| `ask_vault` | Ask a question, get an LLM-powered answer |
-| `ask_agent` | Route a query automatically to the best tool |
-| `summarize_topic` | LLM-generated consolidated summary of a topic |
+# Read a note via the notes tool
+obsidian-ai notes read --path "Notes/topic.md"
 
-### Entity System
-| Tool | Description |
-|------|-------------|
-| `search_entities` | Find notes mentioning an entity |
-| `get_note_entities` | Return all entities found in a note |
-| `get_entity_types` | List all entity types in the index |
-| `get_entity_aliases` | List aliases for an entity |
-| `list_entities` | List entities with optional type filter |
-| `add_entity` | Register a new entity with metadata |
-| `merge_entities` | Merge duplicate entities in the index |
-| `import_entities` | Import entities from another vault with configurable dedup |
-| `entity_timeline` | Show timeline of entity mentions across notes |
-| `related_entities` | Find related entities via relationship graph |
-| `get_ranking_weights` | View current ranking weights for entity/keyword/graph |
-| `set_ranking_weights` | Customize ranking weights |
+# Search by tags
+obsidian-ai notes search_by_tags --tags "python,ml"
 
-### Clustering
-| Tool | Description |
-|------|-------------|
-| `get_clusters` | Return semantic clusters of notes based on embedding similarity |
+# Find orphan notes
+obsidian-ai graph orphans
 
-### Health
-| Tool | Description |
-|------|-------------|
-| `health_check` | Check backend service status (Ollama, ChromaDB, Obsidian API) |
-
-### Index Management
-| Tool | Description |
-|------|-------------|
-| `sync_index` | Re-run the full indexer pipeline |
-| `get_index_stats` | Show index statistics |
-| `switch_embedding_model` | Switch embedding model at runtime |
-
-### Todo Management
-| Tool | Description |
-|------|-------------|
-| `get_todos` | List todos with filters |
-| `add_todo` | Add a new todo task |
-| `complete_todo` | Mark a todo as completed |
-| `update_todo` | Update one or more fields of a todo |
-| `delete_todo` | Delete a todo by id |
-| `sync_todos` | Recalculate todo counts |
-| `get_todo_stats` | Aggregated todo statistics |
-| `ensure_todo_file` | Create todos.md if missing |
-| `get_todos_by_priority` | List todos grouped by priority |
-| `add_todo_from_natural_language` | Add todo from plain text |
-| `suggest_task_priority` | Suggest priority for a task via LLM |
-| `suggest_due_date` | Suggest due date for a task via LLM |
-| `suggest_task_splitting` | Suggest how to split a large task |
-| `get_overdue_summary` | Summary of all overdue todos |
-| `estimate_completion_date` | Estimate completion date for a project |
-| `get_todos_for_note` | Find todos linked to a specific note |
-| `get_notes_for_todo` | Find notes linked to a specific todo |
-| `link_todo_to_notes` | Link a todo to one or more notes |
-| `ask_vault_about_todo` | Ask about a specific todo in vault context |
-| `ask_vault_about_todos` | Ask a question about all todos |
+# Check system health
+obsidian-ai admin health
+```
 
 ---
 
@@ -283,14 +204,19 @@ obsidian_mcp_server_test/
 │       ├── todos.py                 # Todo implementation layer
 │       ├── eval.py                  # Retrieval evaluation benchmark
 │       ├── tools/                   # MCP tool submodules
-│       │   ├── __init__.py          # Tool registration
+│       │   ├── __init__.py          # Tool registration (register_all)
+│       │   ├── _tool_base.py        # build_tool() decorator, TOOL_MODULES
 │       │   ├── _shared.py           # Shared helpers (expand, rewrite, filter)
-│       │   ├── search.py            # 11 search/retrieval tools
-│       │   ├── notes.py             # 14 note CRUD tools
-│       │   ├── graph.py             # 20 entity/graph tools
-│       │   ├── todos.py             # 20 todo management tools
-│       │   └── misc.py              # get_clusters, health_check
-│       └── mcp_server.py            # FastMCP server (67 tools)
+│       │   ├── ask.py               # ask — universal discovery tool
+│       │   ├── notes.py             # notes — note CRUD (7 actions)
+│       │   ├── tags.py              # tags — YAML frontmatter (5 actions)
+│       │   ├── links.py             # links — wiki-link ops (4 actions)
+│       │   ├── graph.py             # graph — exploration (8 actions)
+│       │   ├── entities.py          # entities — entity management (13 actions)
+│       │   ├── todo.py              # todo — task management (12 actions)
+│       │   ├── admin.py             # admin — health, reindex, stats (5 actions)
+│       │   └── tools.py             # tools — tool discovery
+│       └── mcp_server.py            # FastMCP server (9 consolidated tools)
 ├── scripts/                         # Health monitoring scripts
 │   ├── monitor_disk_temp.ps1        # Disk temperature monitor
 │   └── temp_dashboard.py            # Temperature dashboard

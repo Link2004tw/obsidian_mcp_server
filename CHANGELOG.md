@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.3.0 (2026-06-07)
+
+### Tool Consolidation — 50+ tools → 9 dispatch tools
+- **Massive reduction** — ~50 specialized MCP tools consolidated into 9 action-dispatch tools so small models don't get confused by too many choices
+- **`ask(query)`** — universal discovery tool; uses LLM intent detection to route queries to 20 internal capabilities (search, Q&A, entities, graph, summaries, tags, stats, and more)
+- **`notes(action, ...)`** — replaces `read_note`, `write_note`, `list_all_notes`, `list_folder`, `read_note_by_title`, `add_note_to_subject`, `search_by_tags`
+- **`tags(action, ...)`** — replaces `add_tags`, `remove_tags`, `set_tags`, `batch_tag_notes`, `tag_notes`
+- **`links(action, ...)`** — replaces `create_backlink`, `get_backlinks`, `get_linked_notes`, `get_broken_links`
+- **`graph(action, ...)`** — replaces `get_communities`, `get_note_community`, `get_orphan_notes`, `get_shortest_path`, `get_graph_stats`, `related_notes`, `multi_hop_traversal`, `export_graph`
+- **`entities(action, ...)`** — replaces `search_entities`, `get_note_entities`, `list_entities`, `get_entity_aliases`, `entity_timeline`, `related_entities`, `add_entity`, `merge_entities`, `change_entity_type`, `get_entity_types`, `get_ranking_weights`, `set_ranking_weights`, `import_entities`
+- **`todo(action, ...)`** — replaces `get_todos`, `add_todo`, `complete_todo`, `update_todo`, `delete_todo`, `get_todo_stats`, `suggest_task_priority`, `suggest_due_date`, `suggest_task_splitting`, `get_overdue_summary`, `link_todo_to_notes`, `ask_vault_about_todo`/`ask_vault_about_todos`
+- **`admin(action, ...)`** — replaces `health_check`, `sync_index`, `get_index_stats`, `switch_embedding_model`, `sync_todos`
+- **`tools()`** — tool introspection, returns all tool names, descriptions, and parameter schemas as JSON
+- **`_tool_base.py`** — new `build_tool()` decorator with standardized logging, exception handling, and `TOOL_MODULES` list (avoids circular imports)
+- **Old `search.py`, `misc.py`, `todos.py`** deleted; `notes.py`/`graph.py` overwritten with consolidated versions
+- **Tests** — 41 passing tests for consolidated API (`test_mcp_server.py` rewritten)
+- **Backend** — `mcp_server.py` re-exports all 9 tools; `pipelines.py` updated; `log_error()` signature clarified
+
+### Documentation
+- `docs/mcp_server.md` — completely rewritten for 9-tool API
+- `docs/api.md` — updated mcp_server.py section for consolidated tools
+- `README.md` — tool tables replaced with 9-tool summary
+- `CHANGELOG.md` — this entry
+
+---
+
 ## v0.2.0 (2026-06-06)
 
 ### Multi-Provider LLM Support

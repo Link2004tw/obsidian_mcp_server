@@ -46,6 +46,8 @@ def _headers():
 
 def _list_dir(path: str = "") -> list[str]:
     clean_path = _validate_path(path) if path else ""
+    if clean_path and not clean_path.endswith("/"):
+        clean_path += "/"
     url = f"{_base_url()}/vault/{clean_path}" if clean_path else f"{_base_url()}/vault/"
     resp = requests.get(url, headers=_headers(), timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()

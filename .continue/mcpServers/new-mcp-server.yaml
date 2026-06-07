@@ -1,0 +1,11 @@
+name: obsidian-ai
+version: 0.2.0
+schema: v1
+mcpServers:
+  - name: obsidian-ai
+    command: python
+    args:
+      - -m
+      - obsidian_ai.mcp_server
+    env:
+      CHROMA_SKIP_RUST: "1"

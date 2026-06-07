@@ -272,7 +272,7 @@ def test_list_dir_root(mock_requests):
 def test_list_dir_leading_slash(mock_requests):
     """Leading slash is stripped: /Courses → Courses → /vault/Courses."""
     url = _get_list_dir_url(mock_requests, "/Courses")
-    assert url.endswith("/vault/Courses")
+    assert url.endswith("/vault/Courses/")
 
 
 @patch.object(obsidian_client, "requests")
@@ -284,9 +284,9 @@ def test_list_dir_root_slash(mock_requests):
 
 @patch.object(obsidian_client, "requests")
 def test_list_dir_multi_leading_slash(mock_requests):
-    """Multiple leading slashes are stripped: //Courses → Courses → /vault/Courses."""
+    """Multiple leading slashes are stripped: //Courses → Courses → /vault/Courses/."""
     url = _get_list_dir_url(mock_requests, "//Courses")
-    assert url.endswith("/vault/Courses")
+    assert url.endswith("/vault/Courses/")
 
 
 @patch.object(obsidian_client, "requests")
@@ -300,5 +300,5 @@ def test_list_dir_trailing_slash(mock_requests):
 def test_list_dir_normal_path_no_double_slash(mock_requests):
     """Normal path produces clean URL with no double slashes."""
     url = _get_list_dir_url(mock_requests, "deeply/nested/folder")
-    assert url.endswith("/vault/deeply/nested/folder")
+    assert url.endswith("/vault/deeply/nested/folder/")
     assert "//vault" not in url

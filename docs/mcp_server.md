@@ -1,6 +1,8 @@
 # MCP Server
 
-The MCP server exposes Obsidian vault operations as callable tools for any MCP-compatible agent (Goose, Claude, Cursor, etc.). Built with [FastMCP](https://github.com/jlowin/fastmcp).
+The MCP server exposes Obsidian vault operations as 9 consolidated callable tools for any MCP-compatible agent (Goose, Claude, Cursor, etc.). Built with [FastMCP](https://github.com/jlowin/fastmcp).
+
+Each tool (except `ask` and `tools`) takes an **`action`** parameter that selects the specific operation — reducing ~50 specialized tools down to 9 dispatch tools while keeping all functionality.
 
 ## Running
 
@@ -16,912 +18,154 @@ All tools that accept a `path` parameter automatically normalize it: if the LLM 
 
 ---
 
-## Tools (70 total)
+## Tools (9 total)
 
-### Health
+Each tool (except `ask` and `tools`) accepts an `action` parameter to select the specific operation. All `path` parameters auto-normalize (absolute or vault-relative accepted).
 
-#### `health_check()`
+---
 
-Check the health status of all backend services (Ollama, ChromaDB, Obsidian API). Useful before starting a long workflow to confirm everything is available.
+### 1. `ask(query: str) -> str`
+
+**Universal discovery tool.** Routes any vault query to the right internal capability via LLM intent detection.
+
+Handles: semantic search, Q&A, entity lookup, relationship discovery, wiki-link traversal, topic summaries, tag suggestions, index stats, orphan detection, community discovery, shortest path, graph export, and more.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `query` | `str` | Natural language request about your vault |
+
+---
+
+### 2. `notes(action, path, content, folder, title, tags, n, subject, sync, reindex_matches) -> str`
+
+**Create, read, list, and organize notes.**
+
+| Action | Description | Key Params |
+|--------|-------------|------------|
+| `read` | Fetch full note content | `path` |
+| `write` | Create or overwrite a note | `path`, `content`, `sync` |
+| `list` | List all note paths | — |
+| `list_folder` | List entries in a folder (non-recursive) | `folder` |
+| `search_by_tags` | Find notes with all given YAML tags (AND) | `tags`, `n` |
+| `read_by_title` | Look up note by filename | `title`, `folder` |
+| `add_note_to_subject` | Create note under Subjects/ with auto hub + backlinks | `subject`, `title`, `content`, `tags` |
+
+---
+
+### 3. `tags(action, path, tags, note_paths, query, top_k, sync) -> str`
+
+**Manage YAML frontmatter tags on notes.**
+
+| Action | Description | Key Params |
+|--------|-------------|------------|
+| `add` | Add tags without affecting existing | `path`, `tags`, `sync` |
+| `remove` | Remove specific tags | `path`, `tags`, `sync` |
+| `set` | Replace all tags on a note | `path`, `tags`, `sync` |
+| `batch_add` | Add same tags to multiple notes | `note_paths`, `tags`, `sync` |
+| `auto_suggest` | LLM suggests + applies tags for a query | `query`, `top_k`, `sync` |
+
+---
+
+### 4. `links(action, path, path_a, path_b, sync) -> str`
+
+**Create and explore [[wiki-link]] connections.**
+
+| Action | Description | Key Params |
+|--------|-------------|------------|
+| `create` | Bidirectional wiki-link between two notes | `path_a`, `path_b`, `sync` |
+| `backlinks` | Notes linking TO a given note | `path` |
+| `outgoing` | Notes a given note links TO | `path` |
+| `broken` | Find wiki-links to non-existent notes | — |
+
+---
+
+### 5. `graph(action, path, start, end, max_depth, k, top_k, graph_weight, format) -> str`
+
+**Explore vault wiki-link graph structure — communities, paths, orphans, and more.**
+
+| Action | Description | Key Params |
+|--------|-------------|------------|
+| `communities` | Detect densely connected note groups | — |
+| `community_of` | Identify a note's community + neighbors | `path`, `top_k` |
+| `orphans` | Find notes with no wiki-links | — |
+| `path` | Shortest wiki-link chain between two notes | `start`, `end` |
+| `stats` | Graph summary statistics | — |
+| `related` | Semantically similar + graph-connected notes | `path`, `k`, `graph_weight` |
+| `traverse` | BFS outward from a seed note | `path`, `max_depth` |
+| `export` | Export graph as JSON or DOT | `format` |
+
+---
+
+### 6. `entities(action, name, entity_name, entity_type, path, n, aliases, relations, reindex_matches, primary, secondary, new_type, date_from, date_to, relation_type, depth, use_graph, data, dedup_config, semantic, entity, graph, keyword) -> str`
+
+**Search, create, and manage named entities (people, projects, concepts, etc.).**
+
+| Action | Description | Key Params |
+|--------|-------------|------------|
+| `search` | Find notes mentioning an entity | `entity_name`, `entity_type`, `n`, `use_graph` |
+| `note_entities` | List entities in a specific note | `path` |
+| `list` | All entities sorted by mention count | `entity_type`, `n` |
+| `aliases` | Canonical name, type, aliases for an entity | `name` |
+| `timeline` | Chronological event timeline for an entity | `name`, `date_from`, `date_to` |
+| `related` | Entities connected via relationship graph | `name`, `relation_type`, `depth` |
+| `add` | Manually create an entity with aliases + relations | `name`, `entity_type`, `aliases`, `relations` |
+| `merge` | Merge two entity records | `primary`, `secondary` |
+| `change_type` | Correct entity classification type | `name`, `new_type` |
+| `types` | List all available entity type labels | — |
+| `weights_get` | Show current ranking weights | — |
+| `weights_set` | Adjust ranking weights | `semantic`, `entity`, `graph`, `keyword` |
+| `import` | Import entities + relations from another vault | `data`, `dedup_config` |
+
+---
+
+### 7. `todo(action, project, task, due, priority, tags, status, todo_id, note_paths, query, overdue, blocked, search, sync) -> str`
+
+**Manage tasks, suggestions, and todo analysis.**
+
+| Action | Description | Key Params |
+|--------|-------------|------------|
+| `list` | List todos with filters | `project`, `status`, `priority`, `overdue`, `blocked`, `search` |
+| `add` | Create a new todo | `project`, `task`, `due`, `priority`, `tags` |
+| `complete` | Mark a todo as completed | `todo_id` |
+| `update` | Update one or more fields | `todo_id`, `task`, `due`, `priority`, `tags`, `project`, `status` |
+| `delete` | Permanently delete a todo | `todo_id` |
+| `stats` | Aggregated todo statistics | — |
+| `suggest_priority` | LLM suggests priority for a task | `task` |
+| `suggest_date` | LLM suggests due date for a task | `task` |
+| `suggest_split` | LLM splits a large task into subtasks | `task` |
+| `overdue_summary` | LLM summary of all overdue todos | — |
+| `link` | Link a todo to notes via wiki-links | `todo_id`, `note_paths` |
+| `ask` | Ask LLM about a specific todo or all todos | `todo_id`, `query` |
+
+---
+
+### 8. `admin(action, folder, subject, model_name, sync) -> str`
+
+**System administration — health checks, re-indexing, model configuration.**
+
+| Action | Description | Key Params |
+|--------|-------------|------------|
+| `health` | Verify LLM, ChromaDB, vault accessibility | — |
+| `reindex` | Re-run full index (folder or entity-specific) | `folder`, `subject` |
+| `stats` | Diagnostic index statistics | — |
+| `switch_model` | Switch embedding model at runtime | `model_name` |
+| `sync_todos` | Recalculate todo frontmatter stats | `sync` |
+
+---
+
+### 9. `tools() -> str`
+
+**Tool discovery.** Lists all available MCP tools with their descriptions and parameter schemas. Use this at the start of a session if your client cannot see all tools at once.
 
 **Parameters:** None
 
-**Returns:** `str` — formatted status of each service (Ollama embed model, chat model, API reachability, index state).
-
----
-
-### Search & Retrieval
-
-#### `search_notes(query, n=5, tags=None, exclude_tags=None, folder=None, date_after=None, date_before=None, expand_query=False, keyword_weight=0.0, min_similarity=None, diversity_penalty=0.0, use_graph=False, graph_depth=1, graph_weight=0.2, use_entities=False, entity_types=None, group_by_note=False, expand_entities=False, use_summaries=False, summary_threshold=0.7)`
-
-Semantic search across all indexed notes with rich metadata filtering, TTL-cached query expansion, and optional auto-rewrite using vault terminology.
-
-**Parameters:**
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `query` | `str` | *(required)* | Natural language search query |
-| `n` | `int` | `5` | Number of results to return |
-| `tags` | `list[str]` | `None` | Filter: notes must have ALL these YAML tags |
-| `exclude_tags` | `list[str]` | `None` | Filter: exclude notes with ANY of these tags |
-| `folder` | `str` | `None` | Filter: only notes under this vault-relative folder |
-| `date_after` | `str` | `None` | Filter: ISO date string (e.g. `2024-06-01`) |
-| `date_before` | `str` | `None` | Filter: ISO date string (e.g. `2024-12-31`) |
-| `expand_query` | `bool` | `False` | Expand query with LLM-generated alternative phrasings (TTL-cached, see EXPAND_CACHE_TTL) |
-| `keyword_weight` | `float` | `0.0` | BM25 keyword blend (0.0 = pure semantic, 1.0 = pure keyword) |
-| `min_similarity` | `float` | `None` | Minimum similarity threshold (0–1) |
-| `diversity_penalty` | `float` | `0.0` | Penalize notes already represented (0.0–1.0) |
-| `use_graph` | `bool` | `False` | Expand results via wiki-link graph traversal |
-| `graph_depth` | `int` | `1` | Max hops for graph traversal |
-| `graph_weight` | `float` | `0.2` | Weight for graph proximity boost |
-| `use_entities` | `bool` | `False` | Also search entity index for matching entities |
-| `entity_types` | `list[str]` | `None` | Filter entity types when `use_entities=True` |
-| `group_by_note` | `bool` | `False` | Group results by note path |
-| `expand_entities` | `bool` | `False` | Follow entity relationship edges |
-| `use_summaries` | `bool` | `False` | Include summary-embedding results |
-| `summary_threshold` | `float` | `0.7` | Min similarity for summary results |
-
-**Returns:** `list[dict]`
-
-```json
-[
-  {"path": "Notes/topic.md", "title": "topic", "matched_chunk_idx": 0, "similarity_score": 0.89, "snippet": "..."},
-  {"path": "Notes/related.md", "title": "related", "matched_chunk_idx": 1, "similarity_score": 0.72, "snippet": "..."}
-]
-```
-
----
-
-#### `batch_search(queries, n=5, tags=None, exclude_tags=None, folder=None, keyword_weight=0.0, min_similarity=None)`
-
----
-
-#### `composite_search(query, n=5, retrieval_depth=2)`
-
-High-recall retrieval combining summary embeddings, entity relationships, and community-aware graph traversal.
-
-**Parameters:**
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `query` | `str` | *(required)* | Search query |
-| `n` | `int` | `5` | Results to return |
-| `retrieval_depth` | `int` | `2` | Strategy: 1=summary, 2=+entity, 3=+community |
-
-**Returns:** `list[dict]` — note-level results with `matched_by` field.
-
-
-Run multiple searches in one call. Each query is searched independently.
-
-**Parameters:**
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `queries` | `list[str]` | *(required)* | List of search queries |
-| `n` | `int` | `5` | Results per query |
-| `tags` | `list[str]` | `None` | Filter by tags (all queries) |
-| `exclude_tags` | `list[str]` | `None` | Exclude by tags (all queries) |
-| `folder` | `str` | `None` | Filter by folder (all queries) |
-| `keyword_weight` | `float` | `0.0` | BM25 keyword blend (all queries) |
-| `min_similarity` | `float` | `None` | Minimum similarity (all queries) |
-
-**Returns:** `dict[str, list[dict]]` — `{query: results}`
-
----
-
-#### `retrieve_notes(query, top_k=5, use_graph=False, graph_depth=1, graph_weight=0.2, use_entities=False, entity_types=None, keyword_weight=0.0, min_similarity=None, expand_query=False, expand_entities=False, use_summaries=False, summary_threshold=0.7, auto_weights=False, auto_rewrite=False)`
-
-Multi-strategy retrieval pipeline combining semantic search, entity lookup, and wiki-link graph traversal into a single unified result set.
-
-**Parameters:** Similar to `search_notes`, without `diversity_penalty`, `tags`/`exclude_tags`/`folder`/`date_*` filters. Adds `auto_weights`, `auto_rewrite`.
-
-**Returns:** `list[dict]` — note-level results with a `matched_by` field indicating which strategy found each result.
-
----
-
-#### `find_duplicate_notes(threshold=0.9, n=20)`
-
-Find near-duplicate notes via embedding similarity. Compares first-chunk embeddings using cosine distance.
-
-**Parameters:**
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `threshold` | `float` | `0.9` | Similarity threshold (0.0–1.0) |
-| `n` | `int` | `20` | Max pairs to return |
-
-**Returns:** `list[dict]` — `[{path_a, path_b, similarity}, ...]`
-
----
-
-#### `search_by_tags(tags, n=10)`
-
-Find notes that have ALL of the given YAML frontmatter tags.
-
-**Parameters:**
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `tags` | `list[str]` | *(required)* | Tags to match (all must be present) |
-| `n` | `int` | `10` | Max results |
-
-**Returns:** `list[dict]` — `[{path, title, tags, snippet}, ...]`
-
----
-
-#### `get_subject(subject, top_k=10, keyword_weight=0.3, group_by_note=False)`
-
-Get notes related to a free-form subject. Uses LLM to expand the subject with related terms, then performs hybrid search (semantic + BM25).
-
-**Parameters:**
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `subject` | `str` | *(required)* | Free-form subject or topic |
-| `top_k` | `int` | `10` | Max results |
-| `keyword_weight` | `float` | `0.3` | BM25 keyword blend |
-| `group_by_note` | `bool` | `False` | Group passages by note |
-
----
-
-### Read & Write
-
-#### `read_note(path)`
-
-Fetch the full content of a note.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `path` | `str` | Vault-relative path (e.g., `Notes/topic.md`) |
-
-**Returns:** `str` — note content as Markdown.
-
----
-
-#### `write_note(path, content)`
-
-Create or overwrite a note.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `path` | `str` | Vault-relative path |
-| `content` | `str` | Full note content (Markdown) |
-
-**Returns:** `str` — confirmation message.
-
----
-
-#### `list_all_notes()`
-
-List all note paths in the vault. **Parameters:** None
-
-**Returns:** `list[str]` — all `.md` file paths (excludes backup folders, `.excalidraw.md`, etc.).
-
----
-
-#### `list_folder(folder_path)`
-
-List entries directly inside a specific folder (non-recursive — no subdirectory traversal). Returns both `.md` files and subdirectory names (with trailing `/`).
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `folder_path` | `str` | Vault-relative folder path |
-
-**Returns:** `list[str]`
-
----
-
-#### `list_folder_deep(folder_path)`
-
-List all note paths within a specific folder (recursive — traverses all subdirectories).
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `folder_path` | `str` | Vault-relative folder path |
-
-**Returns:** `list[str]`
-
----
-
-#### `read_note_by_title(title, folder_path="")`
-
-Look up a note by its title (filename without `.md` extension). Optionally scope to a folder to disambiguate duplicate titles.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `title` | `str` | *(required)* | Note title without `.md` extension |
-| `folder_path` | `str` | `""` | Vault-relative folder to narrow search |
-
-**Returns:** `str`
-
-**Duplicate title handling:**
-- Single match → returns note content directly
-- Multiple matches, no folder → all matches with `─── path ───` headers
-- Multiple matches with folder → narrows to notes inside that folder
-- No match → `Error: No note found with title: ...`
-
----
-
-#### `add_note_to_subject(subject, title, content, tags=None)`
-
-Create a note and auto-link it into a subject hub. Creates the subject hub note (`Subjects/{subject}/{subject}.md`) if missing, and adds a mutual `[[backlink]]` between the new note and the hub.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `subject` | `str` | *(required)* | Subject name (folder and tag) |
-| `title` | `str` | *(required)* | Note title (file name without `.md`) |
-| `content` | `str` | *(required)* | Markdown body content |
-| `tags` | `list[str]` | `None` | Optional extra tags |
-
-**Returns:** `str` — confirmation with note path.
-
----
-
-### Tag Management
-
-#### `add_tags(path, tags)`
-
-Add tags to a note's YAML frontmatter. Creates frontmatter if absent.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `path` | `str` | Vault-relative path |
-| `tags` | `list[str]` | Tags to add |
-
-**Returns:** `str` — confirmation with updated tag list.
-
----
-
-#### `remove_tags(path, tags)`
-
-Remove specific tags from a note's YAML frontmatter.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `path` | `str` | Vault-relative path |
-| `tags` | `list[str]` | Tags to remove |
-
-**Returns:** `str` — confirmation message.
-
----
-
-#### `set_tags(path, tags)`
-
-Replace all tags on a note with the given list.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `path` | `str` | Vault-relative path |
-| `tags` | `list[str]` | New tag list |
-
-**Returns:** `str` — confirmation message.
-
----
-
-#### `batch_tag_notes(note_paths, tags)`
-
-Add tags to multiple notes at once.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `note_paths` | `list[str]` | Paths to notes to tag |
-| `tags` | `list[str]` | Tags to add to each note |
-
-**Returns:** `dict[str, str]` — `{path: result_message}`
-
----
-
-### Graph / Wiki-Links
-
-#### `create_backlink(path_a, path_b)`
-
-Create mutual `[[backlinks]]` between two notes.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `path_a` | `str` | First note path |
-| `path_b` | `str` | Second note path |
-
-**Returns:** `str` — confirmation message.
-
----
-
-#### `get_backlinks(path)`
-
-Return all notes linking TO the given note (incoming wiki-link edges).
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `path` | `str` | Vault-relative note path |
-
-**Returns:** `list[dict]` — `[{path, title}, ...]`
-
----
-
-#### `get_linked_notes(path)`
-
-Return all notes the given note links TO (outgoing wiki-link edges).
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `path` | `str` | Vault-relative note path |
-
-**Returns:** `list[dict]` — `[{path, title}, ...]`
-
----
-
-#### `get_broken_links()`
-
-Find wiki-links across all notes that don't resolve to any existing note. **Parameters:** None
-
-**Returns:** `list[dict]` — `[{source_path, link_target}, ...]`
-
----
-
-#### `get_graph_stats()`
-
-Return graph statistics. **Parameters:** None
-
-**Returns:** `dict` — `{nodes, edges, avg_degree, isolated_count, isolated (list), hubs (top 5)}`
-
----
-
-#### `get_communities()`
-
-Detect communities in the wiki-link graph using label propagation. **Parameters:** None
-
-**Returns:** `dict[str, list[str]]` — `{community_id: [note_paths]}`
-
----
-
-#### `get_note_community(path)`
-
-Show which community a specific note belongs to.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `path` | `str` | Vault-relative note path |
-
-**Returns:** `str` — community ID label.
-
----
-
-#### `multi_hop_traversal(path, max_depth=2)`
-
-Perform BFS graph traversal from a seed note up to N hops.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `path` | `str` | *(required)* | Seed note path |
-| `max_depth` | `int` | `2` | Max hops |
-
-**Returns:** `list[dict]` — `[{path, title, depth, trace}, ...]`
-
----
-
-#### `related_notes(path, k=10, graph_weight=0.3)`
-
-Find notes related to a given note using both semantic similarity and graph proximity. Combines embedding-based search with wiki-link graph traversal.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `path` | `str` | *(required)* | Source note path |
-| `k` | `int` | `10` | Max results |
-| `graph_weight` | `float` | `0.3` | Graph proximity weight (0.0 = pure semantic, 1.0 = pure graph) |
-
-**Returns:** `list[dict]`
-
----
-
-#### `export_graph(format="json")`
-
-Export the wiki-link graph for external visualization.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `format` | `str` | `"json"` | `"dot"` for Graphviz DOT, `"json"` for JSON |
-
-**Returns:** `str` — DOT or JSON string.
-
----
-
-#### `get_shortest_path(source, target)`
-
-Find the shortest path between two notes in the wiki-link graph.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `source` | `str` | Vault-relative path of source note |
-| `target` | `str` | Vault-relative path of target note |
-
-**Returns:** `list[str]` — ordered list of note paths forming the shortest path.
-
----
-
-#### `get_orphan_notes()`
-
-Find notes with no incoming or outgoing wiki-links (orphans). **Parameters:** None
-
-**Returns:** `list[str]` — note paths.
-
----
-
-### LLM-Powered
-
-#### `ask_vault(question, top_k=3, use_graph=False, graph_depth=1, use_entities=False, entity_types=None, keyword_weight=0.0, expand_query=False, expand_entities=False, use_summaries=False, summary_threshold=0.7, auto_weights=False, auto_rewrite=False)`
-
-Ask a natural language question about your vault. Searches relevant notes and uses the LLM to generate an answer.
-
-**Parameters:**
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `question` | `str` | *(required)* | Natural language question |
-| `top_k` | `int` | `3` | Notes to retrieve for context |
-| `use_graph` | `bool` | `False` | Expand via wiki-link graph |
-| `graph_depth` | `int` | `1` | Max graph hops |
-| `use_entities` | `bool` | `False` | Expand via entity lookup |
-| `entity_types` | `list[str]` | `None` | Filter entity types |
-| `keyword_weight` | `float` | `0.0` | BM25 keyword blend |
-| `expand_query` | `bool` | `False` | LLM query expansion (TTL-cached) |
-| `expand_entities` | `bool` | `False` | Follow entity relationship edges |
-| `use_summaries` | `bool` | `False` | Include summary-embedding results |
-| `summary_threshold` | `float` | `0.7` | Min similarity for summary results |
-| `auto_weights` | `bool` | `False` | Auto-detect query intent, adjust weights |
-| `auto_rewrite` | `bool` | `False` | Rewrite query using vault terminology |
-
-**Returns:** `str` — LLM-generated answer based on vault content.
-
----
-
-#### `ask_agent(query)`
-
-Route a query to the best tool automatically using an LLM agent. The agent decides whether to search, read notes, traverse the graph, etc.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `query` | `str` | Free-form query or request |
-
-**Returns:** `str` — tool result or answer.
-
----
-
-#### `summarize_topic(topic, top_k=5, use_graph=True, graph_depth=1, graph_weight=0.2, use_entities=True, entity_types=None, keyword_weight=0.0, expand_query=False, expand_entities=False, use_summaries=False, summary_threshold=0.7, auto_weights=False, auto_rewrite=False)`
-
-Search all notes related to a topic and return an LLM-generated consolidated summary.
-
-**Parameters:** Similar to `ask_vault` but defaults to `use_graph=True`, `use_entities=True`.
-
-**Returns:** `str` — LLM-generated summary.
-
----
-
-#### `tag_notes(query, top_k=5)`
-
-Search notes matching a query and auto-suggest tags using the LLM.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `query` | `str` | *(required)* | Search query |
-| `top_k` | `int` | `5` | Number of notes to tag |
-
-**Returns:** `str` — confirmation with tag map.
-
----
-
-### Entity System
-
-#### `search_entities(entity_name, entity_type=None, n=10, use_graph=False)`
-
-Find notes mentioning a specific entity. Uses entity inverted index with ChromaDB fallback.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `entity_name` | `str` | *(required)* | Entity name to search (case-insensitive) |
-| `entity_type` | `str` | `None` | Filter by type (Person, Technology, Project, etc.) |
-| `n` | `int` | `10` | Max results |
-| `use_graph` | `bool` | `False` | Expand via 1-hop graph traversal |
-
-**Returns:** `list[dict]` — `[{path, title, entity_name, entity_type, snippet, confidence}, ...]`
-
----
-
-#### `get_note_entities(path)`
-
-Return all entities found in a specific note during indexing.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `path` | `str` | Vault-relative note path |
-
-**Returns:** `list[dict]` — `[{entity_name, entity_type, confidence}, ...]`
-
----
-
-#### `get_entity_types()`
-
-List all entity type labels present in the index. **Parameters:** None
-
-**Returns:** `list[str]` — sorted entity types (e.g. `["Concept", "Event", "Hardware", ...]`)
-
----
-
-#### `get_entity_aliases(entity_name)`
-
-List all aliases for a given entity.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `entity_name` | `str` | Entity name |
-
-**Returns:** `list[str]` — alias names.
-
----
-
-#### `list_entities(entity_type=None, n=50)`
-
-List entities in the index, optionally filtered by type.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `entity_type` | `str` | `None` | Filter by type (Person, Technology, etc.) |
-| `n` | `int` | `50` | Max results |
-
-**Returns:** `list[dict]` — `[{name, type, confidence, note_count}, ...]`
-
----
-
-#### `add_entity(name, entity_type, confidence=0.8, aliases=None)`
-
-Register a new entity in the index.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `name` | `str` | *(required)* | Entity name |
-| `entity_type` | `str` | *(required)* | Entity type (Person, Technology, etc.) |
-| `confidence` | `float` | `0.8` | Confidence score (0–1) |
-| `aliases` | `list[str]` | `None` | Alternative names |
-
-**Returns:** `str` — confirmation message.
-
----
-
-#### `merge_entities(source_name, target_name)`
-
-Merge duplicate entities. All mentions of `source_name` are reassigned to `target_name`.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `source_name` | `str` | Entity to merge from |
-| `target_name` | `str` | Entity to merge into |
-
-**Returns:** `str` — confirmation message.
-
----
-
-#### `entity_timeline(entity_name)`
-
-Show the timeline of entity mentions across notes (ordered by date).
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `entity_name` | `str` | Entity name |
-
-**Returns:** `list[dict]` — `[{path, date, snippet}, ...]`
-
----
-
-#### `related_entities(entity_name, entity_types=None, max_entities=10)`
-
-Find entities related to a given entity via the relationship graph.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `entity_name` | `str` | *(required)* | Entity to find relations for |
-| `entity_types` | `list[str]` | `None` | Filter related by type |
-| `max_entities` | `int` | `10` | Max related entities to return |
-
-**Returns:** `list[dict]` — `[{entity_name, entity_type, relationship, notes}, ...]`
-
----
-
-#### `get_ranking_weights()`
-
-View current ranking weights for entity, keyword, and graph signals.
-
-**Parameters:** None
-
-**Returns:** `dict` — `{entity_weight, keyword_weight, graph_weight}`
-
----
-
-#### `set_ranking_weights(entity_weight=None, keyword_weight=None, graph_weight=None)`
-
-Customize ranking weights. Only provided values are updated.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `entity_weight` | `float` | `None` | Entity signal weight (0-1) |
-| `keyword_weight` | `float` | `None` | Keyword signal weight (0-1) |
-| `graph_weight` | `float` | `None` | Graph signal weight (0-1) |
-
-**Returns:** `dict` — updated weights.
-
----
-
-### Clustering
-
-#### `get_clusters(force_recompute=False, similarity_threshold=0.6)`
-
-Return semantic clusters of notes based on embedding similarity. Groups notes by meaning across the vault.
-
-**Parameters:**
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `force_recompute` | `bool` | `False` | Ignore cache and re-run clustering |
-| `similarity_threshold` | `float` | `0.6` | Min cosine similarity (0-1) for edge |
-
-**Returns:** `list[dict]` — `[{label, notes, size, central_note}, ...]`
-
----
-
-### Index Management
-
-#### `sync_index()`
-
-Re-run the full indexing pipeline. Clears the embedding cache and BM25 index. **Parameters:** None
-
-**Returns:** `str` — confirmation message.
-
----
-
-#### `health_check()`
-
-*(See Health section above)*
-
----
-
-#### `get_index_stats()`
-
-Return index statistics. **Parameters:** None
-
-**Returns:** `str` — formatted stats with chunk count, unique notes, config info, and cache stats.
-
----
-
-#### `switch_embedding_model(model_name)`
-
-Switch the embedding model at runtime. Verifies the model exists in Ollama, clears all caches, and re-indexes the vault.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `model_name` | `str` | Ollama model name (e.g. `"nomic-embed-text"`) |
-
-**Returns:** `str` — confirmation with details.
-
----
-
-### Todo Management
-
-#### `get_todos(project="", status="", overdue=False, blocked=False, search="")`
-
-List todos from `todos.md` with optional filters.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `project` | `str` | `""` | Filter by project name (case-sensitive) |
-| `status` | `str` | `""` | `"pending"` or `"completed"` |
-| `overdue` | `bool` | `False` | Only overdue pending todos |
-| `blocked` | `bool` | `False` | Only blocked todos |
-| `search` | `str` | `""` | Free-text search |
-
-**Returns:** `list[dict]`
-
----
-
-#### `add_todo(project, task, due="", priority="", tags=None)`
-
-Add a new todo task to a project. Creates the project if it doesn't exist.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `project` | `str` | *(required)* | Project name |
-| `task` | `str` | *(required)* | Task description |
-| `due` | `str` | `""` | Due date (YYYY-MM-DD) |
-| `priority` | `str` | `""` | `"high"`, `"medium"`, or `"low"` |
-| `tags` | `list[str]` | `None` | Optional tags |
-
-**Returns:** `dict` — `{success, todo_id, ...}`
-
----
-
-#### `complete_todo(todo_id)`
-
-Mark a todo as completed by its id.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `todo_id` | `str` | Todo ID (returned by `get_todos` or `add_todo`) |
-
-**Returns:** `dict` — `{success, ...}`
-
----
-
-#### `update_todo(todo_id, task="", due="", priority="", tags=None, project="", status="")`
-
-Update one or more fields of an existing todo. Only provided fields are changed.
-
-**Returns:** `dict` — `{success, ...}`
-
----
-
-#### `delete_todo(todo_id)`
-
-Delete a todo by its id.
-
-**Returns:** `dict` — `{success, ...}`
-
----
-
-#### `sync_todos()`
-
-Recalculate todo counts in the `todos.md` frontmatter and rewrite the file. **Parameters:** None
-
-**Returns:** `dict` — `{success, ...}`
-
----
-
-#### `get_todo_stats()`
-
-Return aggregated statistics about all todos. **Parameters:** None
-
-**Returns:** `dict` — `{total, completed, pending, overdue, per_project, per_priority, ...}`
-
----
-
-#### `ensure_todo_file()`
-
-Create a default `todos.md` file in the vault if it doesn't exist. **Parameters:** None
-
-**Returns:** `str` — confirmation message.
-
----
-
-#### `get_todos_by_priority()`
-
-List todos grouped by priority (high, medium, low).
-
-**Returns:** `dict` — `{priority: [todos]}`
-
----
-
-#### `add_todo_from_natural_language(text)`
-
-Add a todo from plain text using LLM parsing.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `text` | `str` | Natural language description |
-
-**Returns:** `dict` — `{success, todo_id, ...}`
-
----
-
-#### `suggest_task_priority(task, context="")`
-
-Suggest a priority for a task using LLM.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `task` | `str` | *(required)* | Task description |
-| `context` | `str` | `""` | Optional context |
-
-**Returns:** `str` — `"high"`, `"medium"`, or `"low"`.
-
----
-
-#### `suggest_due_date(task, context="")`
-
-Suggest a due date for a task using LLM.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `task` | `str` | *(required)* | Task description |
-| `context` | `str` | `""` | Optional context |
-
-**Returns:** `str` — suggested date (YYYY-MM-DD).
-
----
-
-#### `suggest_task_splitting(task)`
-
-Suggest how to split a large task into smaller subtasks using LLM.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `task` | `str` | Task description to split |
-
-**Returns:** `str` — suggested subtasks.
-
----
-
-#### `get_overdue_summary()`
-
-Return a summary of all overdue pending todos.
-
-**Returns:** `list[dict]` — overdue todos with days past due.
-
----
-
-#### `estimate_completion_date(project)`
-
-Estimate completion date for a project based on current progress.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `project` | `str` | Project name |
-
-**Returns:** `str` — estimated date.
-
----
-
-#### `get_todos_for_note(note)`
-
-Find todos linked to a specific note.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `note` | `str` | Vault-relative note path |
-
-**Returns:** `list[dict]` — linked todos.
-
----
-
-#### `get_notes_for_todo(todo_id)`
-
-Find notes linked to a specific todo.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `todo_id` | `str` | Todo ID |
-
-**Returns:** `list[str]` — note paths.
-
----
-
-#### `link_todo_to_notes(todo_id, notes)`
-
-Link a todo to one or more notes.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `todo_id` | `str` | Todo ID |
-| `notes` | `list[str]` | Vault-relative note paths |
-
-**Returns:** `dict` — `{success, ...}`
-
----
-
-#### `ask_vault_about_todo(todo_id)`
-
-Ask a question about a specific todo in the context of the vault.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `todo_id` | `str` | Todo ID |
-
-**Returns:** `str` — LLM-generated answer.
-
----
-
-#### `ask_vault_about_todos(query)`
-
-Ask a question about all todos in the context of the vault.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `query` | `str` | Natural language query |
-
-**Returns:** `str` — LLM-generated answer.
+**Returns:** JSON array of tool objects, each with `name`, `description`, and `parameters`.
 
 ---
 
 ## Error Handling
 
-All tools catch exceptions and log them to `logs/mcp_calls.log` with the full traceback. List-returning tools return an empty list `[]` on failure. String-returning tools return an error message string.
+All tools catch exceptions and log them to `logs/mcp_calls.log` with the full traceback. String-returning tools return an error message string on failure.
 
 ---
 
@@ -930,8 +174,8 @@ All tools catch exceptions and log them to `logs/mcp_calls.log` with the full tr
 Every tool call is logged to `logs/mcp_calls.log`:
 
 ```
-2026-05-31 14:23:01 [INFO] obsidian_ai.mcp_server — search_notes — query=python, n=5
-2026-05-31 14:23:02 [INFO] obsidian_ai.mcp_server — read_note — path=Notes/topic.md
+2026-05-31 14:23:01 [INFO] obsidian_ai.mcp_server — ask — query=python n=5
+2026-05-31 14:23:02 [INFO] obsidian_ai.mcp_server — notes — action=read path=Notes/topic.md
 ```
 
 ---

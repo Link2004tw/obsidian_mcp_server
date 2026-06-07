@@ -1,4 +1,4 @@
-"""Tests for mcp_server.py — MCP tools with mocked dependencies."""
+"""Tests for consolidated MCP tools with mocked dependencies."""
 from unittest.mock import patch
 
 from obsidian_ai import mcp_server
@@ -48,11 +48,8 @@ def test_matches_where_exact():
 
 
 def test_matches_where_no_match():
-    """_matches_where only supports $contains/$gte, not direct equality.
-    Direct value comparisons are ignored (pass-through)."""
     meta = {"path": "a.md", "title": "A"}
     where = {"title": "B"}
-    # No $contains or $gte op → condition passes
     assert mcp_server._matches_where(meta, where) is True
 
 
@@ -109,32 +106,29 @@ def test_build_search_where_combined():
     assert len(where["$and"]) == 2
 
 
-# ── add_tags tool ──────────────────────────────────────────────────
+# ── notes tool: tags actions ────────────────────────────────────────
 
 
-@patch("obsidian_ai.tools.notes.obsidian_client")
-def test_add_tags(mock_obsidian):
+@patch("obsidian_ai.tools.tags.obsidian_client")
+def test_tags_add(mock_obsidian):
     mock_obsidian.get_note.return_value = "---\ntags:\n  - existing\n---\nBody"
-    result = mcp_server.add_tags("test.md", ["new-tag"])
+    result = mcp_server.tags(action="add", path="test.md", tags=["new-tag"])
     assert "Tags added" in result
     mock_obsidian.get_note.assert_called_once_with("test.md")
     mock_obsidian.put_note.assert_called_once()
 
 
-@patch("obsidian_ai.tools.notes.obsidian_client")
-def test_add_tags_error(mock_obsidian):
+@patch("obsidian_ai.tools.tags.obsidian_client")
+def test_tags_add_error(mock_obsidian):
     mock_obsidian.get_note.side_effect = Exception("not found")
-    result = mcp_server.add_tags("missing.md", ["tag"])
+    result = mcp_server.tags(action="add", path="missing.md", tags=["tag"])
     assert "Error" in result
 
 
-# ── remove_tags tool ───────────────────────────────────────────────
-
-
-@patch("obsidian_ai.tools.notes.obsidian_client")
-def test_remove_tags(mock_obsidian):
+@patch("obsidian_ai.tools.tags.obsidian_client")
+def test_tags_remove(mock_obsidian):
     mock_obsidian.get_note.return_value = "---\ntags:\n  - keep\n  - remove\n---\nBody"
-    result = mcp_server.remove_tags("test.md", ["remove"])
+    result = mcp_server.tags(action="remove", path="test.md", tags=["remove"])
     assert "Tags removed" in result
     call_args = mock_obsidian.put_note.call_args
     content = call_args[0][1]
@@ -142,20 +136,17 @@ def test_remove_tags(mock_obsidian):
     assert "keep" in content
 
 
-@patch("obsidian_ai.tools.notes.obsidian_client")
-def test_remove_tags_error(mock_obsidian):
+@patch("obsidian_ai.tools.tags.obsidian_client")
+def test_tags_remove_error(mock_obsidian):
     mock_obsidian.get_note.side_effect = Exception("fail")
-    result = mcp_server.remove_tags("x.md", ["tag"])
+    result = mcp_server.tags(action="remove", path="x.md", tags=["tag"])
     assert "Error" in result
 
 
-# ── set_tags tool ──────────────────────────────────────────────────
-
-
-@patch("obsidian_ai.tools.notes.obsidian_client")
-def test_set_tags(mock_obsidian):
+@patch("obsidian_ai.tools.tags.obsidian_client")
+def test_tags_set(mock_obsidian):
     mock_obsidian.get_note.return_value = "---\ntags:\n  - old\n---\nBody"
-    result = mcp_server.set_tags("test.md", ["new1", "new2"])
+    result = mcp_server.tags(action="set", path="test.md", tags=["new1", "new2"])
     assert "Tags set" in result
     call_args = mock_obsidian.put_note.call_args
     content = call_args[0][1]
@@ -164,106 +155,118 @@ def test_set_tags(mock_obsidian):
     assert "old" not in content
 
 
-@patch("obsidian_ai.tools.notes.obsidian_client")
-def test_set_tags_error(mock_obsidian):
+@patch("obsidian_ai.tools.tags.obsidian_client")
+def test_tags_set_error(mock_obsidian):
     mock_obsidian.get_note.side_effect = Exception("fail")
-    result = mcp_server.set_tags("x.md", ["tag"])
+    result = mcp_server.tags(action="set", path="x.md", tags=["tag"])
     assert "Error" in result
 
 
-# ── read_note tool ─────────────────────────────────────────────────
+# ── notes tool: read/write/list actions ──────────────────────────────
 
 
 @patch("obsidian_ai.tools.notes.obsidian_client")
-def test_read_note(mock_obsidian):
+def test_notes_read(mock_obsidian):
     mock_obsidian.get_note.return_value = "# Hello\nContent here"
-    result = mcp_server.read_note("test.md")
+    result = mcp_server.notes(action="read", path="test.md")
     assert "Hello" in result
     mock_obsidian.get_note.assert_called_once_with("test.md")
 
 
 @patch("obsidian_ai.tools.notes.obsidian_client")
-def test_read_note_error(mock_obsidian):
+def test_notes_read_error(mock_obsidian):
     mock_obsidian.get_note.side_effect = Exception("404")
-    result = mcp_server.read_note("missing.md")
+    result = mcp_server.notes(action="read", path="missing.md")
     assert "Error" in result
 
 
-# ── list_all_notes tool ────────────────────────────────────────────
-
-
 @patch("obsidian_ai.tools.notes.obsidian_client")
-def test_list_all_notes(mock_obsidian):
+def test_notes_list(mock_obsidian):
     mock_obsidian.list_all_notes.return_value = ["a.md", "b.md"]
-    result = mcp_server.list_all_notes()
-    assert result == ["a.md", "b.md"]
+    result = mcp_server.notes(action="list")
+    assert "a.md" in result
+    assert "b.md" in result
 
 
 @patch("obsidian_ai.tools.notes.obsidian_client")
-def test_list_all_notes_error(mock_obsidian):
+def test_notes_list_error(mock_obsidian):
     mock_obsidian.list_all_notes.side_effect = Exception("fail")
-    result = mcp_server.list_all_notes()
-    # Returns empty list on error, not an error string
-    assert result == []
-
-
-# ── list_folder tool ───────────────────────────────────────────────
+    result = mcp_server.notes(action="list")
+    assert "Error" in result
 
 
 @patch("obsidian_ai.tools.notes.obsidian_client")
-def test_list_folder(mock_obsidian):
+def test_notes_list_folder(mock_obsidian):
     mock_obsidian.list_folder.return_value = ["notes/a.md", "notes/sub/"]
-    result = mcp_server.list_folder("notes/")
-    assert result == ["notes/a.md", "notes/sub/"]
-
-
-# ── write_note tool ────────────────────────────────────────────────
+    result = mcp_server.notes(action="list_folder", folder="notes/")
+    assert "notes/a.md" in result
 
 
 @patch("obsidian_ai.tools.notes.obsidian_client")
-def test_write_note(mock_obsidian):
-    result = mcp_server.write_note("new.md", "# Title\nContent")
-    assert "Written" in result or "wrote" in result.lower() or "success" in result.lower()
+def test_notes_write(mock_obsidian):
+    result = mcp_server.notes(action="write", path="new.md", content="# Title\nContent")
+    assert "Written" in result
     mock_obsidian.put_note.assert_called_once_with("new.md", "# Title\nContent")
 
 
 @patch("obsidian_ai.tools.notes.obsidian_client")
-def test_write_note_error(mock_obsidian):
+def test_notes_write_error(mock_obsidian):
     mock_obsidian.put_note.side_effect = Exception("fail")
-    result = mcp_server.write_note("x.md", "content")
+    result = mcp_server.notes(action="write", path="x.md", content="content")
     assert "Error" in result
 
 
-# ── create_backlink tool ───────────────────────────────────────────
+# ── links tool ───────────────────────────────────────────────────────
 
 
-@patch("obsidian_ai.tools.notes.obsidian_client")
-def test_create_backlink(mock_obsidian):
+@patch("obsidian_ai.tools.links.obsidian_client")
+def test_links_create(mock_obsidian):
     mock_obsidian.get_note.side_effect = ["# A\nContent A", "# B\nContent B"]
-    result = mcp_server.create_backlink("a.md", "b.md")
-    assert "backlink" in result.lower() or "linked" in result.lower()
-    # Should have called put_note twice (once for each note)
+    result = mcp_server.links(action="create", path_a="a.md", path_b="b.md")
+    assert "Linked" in result
     assert mock_obsidian.put_note.call_count == 2
 
 
-@patch("obsidian_ai.tools.notes.obsidian_client")
-def test_create_backlink_already_exists(mock_obsidian):
-    """When [[b]] is already in note A, it should not be added again.
-    Note: the function matches by display name ([[b]]), not full path ([[b.md]])."""
+@patch("obsidian_ai.tools.links.obsidian_client")
+def test_links_create_already_exists(mock_obsidian):
     mock_obsidian.get_note.side_effect = ["# A\n[[b]]\nContent", "# B\n[[a]]\nContent"]
-    result = mcp_server.create_backlink("a.md", "b.md")
-    assert "already" in result.lower() or "exist" in result.lower() or "linked" in result.lower()
-    # put_note should NOT be called since links already exist
+    result = mcp_server.links(action="create", path_a="a.md", path_b="b.md")
+    assert "Linked" in result
     mock_obsidian.put_note.assert_not_called()
 
 
-# ── get_index_stats tool ───────────────────────────────────────────
+# ── admin tool: health check ─────────────────────────────────────────
 
 
-@patch("obsidian_ai.tools.search.chroma_store")
-def test_get_index_stats(mock_chroma):
+@patch("obsidian_ai.tools.admin.llm_client")
+@patch("obsidian_ai.tools.admin.obsidian_client")
+@patch("obsidian_ai.tools.admin.chroma_store")
+def test_admin_health(mock_chroma, mock_obsidian, mock_llm):
+    mock_llm.check_health.return_value = {
+        "ollama": {"status": "ok", "available": True},
+    }
+    mock_obsidian.list_all_notes.return_value = ["note1.md", "note2.md"]
+    mock_chroma.count.return_value = 42
+    result = mcp_server.admin(action="health")
+    import json
+    data = json.loads(result)
+    assert data["ollama"]["status"] == "ok"
+    assert data["note_count"] == 2
+    assert data["chunk_count"] == 42
+
+
+# ── admin tool: index stats ──────────────────────────────────────────
+
+
+@patch("obsidian_ai.tools.admin.chroma_store")
+@patch("obsidian_ai.tools.admin.llm_client")
+@patch("obsidian_ai.tools.admin.entity_store")
+@patch("obsidian_ai.tools.admin.config")
+def test_admin_stats(mock_config, mock_entity_store, mock_llm, mock_chroma):
     mock_chroma.get_index_stats.return_value = {"total_chunks": 100, "unique_notes": 50}
-    result = mcp_server.get_index_stats()
+    mock_llm.embed_cache_info.return_value = {"currsize": 10, "maxsize": 1000, "hits": 5, "misses": 3}
+    mock_entity_store.stats.return_value = {"total_entities": 20, "total_mentions": 45}
+    result = mcp_server.admin(action="stats")
     assert "100" in result
     assert "50" in result
 
@@ -288,12 +291,12 @@ def test_expand_query_empty(mock_llm):
     assert result == []
 
 
-# ── Entity Tools ────────────────────────────────────────────────────
+# ── entities tool ────────────────────────────────────────────────────
 
 
-@patch("obsidian_ai.tools.graph.chroma_store")
-@patch("obsidian_ai.tools.graph.entity_store")
-def test_search_entities_by_name(mock_entity_store, mock_chroma):
+@patch("obsidian_ai.tools.entities.chroma_store")
+@patch("obsidian_ai.tools.entities.entity_store")
+def test_entities_search_by_name(mock_entity_store, mock_chroma):
     mock_chroma._collection = None
     mock_entity_store.search.return_value = [
         {"path": "note1.md", "entity_name": "ESP32", "entity_type": "Hardware",
@@ -301,70 +304,50 @@ def test_search_entities_by_name(mock_entity_store, mock_chroma):
         {"path": "note2.md", "entity_name": "ESP32", "entity_type": "Hardware",
          "snippet": "ESP32 module", "confidence": 0.9},
     ]
-    result = mcp_server.search_entities("ESP32")
-    assert len(result) == 2
-    assert result[0]["entity_name"] == "ESP32"
-    assert result[0]["entity_type"] == "Hardware"
+    result = mcp_server.entities(action="search", entity_name="ESP32")
+    import json
+    data = json.loads(result)
+    assert len(data) == 2
+    assert data[0]["entity_name"] == "ESP32"
 
 
-@patch("obsidian_ai.tools.graph.chroma_store")
-@patch("obsidian_ai.tools.graph.entity_store")
-def test_search_entities_empty(mock_entity_store, mock_chroma):
+@patch("obsidian_ai.tools.entities.chroma_store")
+@patch("obsidian_ai.tools.entities.entity_store")
+def test_entities_search_empty(mock_entity_store, mock_chroma):
     mock_chroma._collection = None
     mock_entity_store.search.return_value = []
-    result = mcp_server.search_entities("Nonexistent")
-    assert result == []
+    result = mcp_server.entities(action="search", entity_name="Nonexistent")
+    assert "No notes found" in result
 
 
-@patch("obsidian_ai.tools.graph.chroma_store")
-@patch("obsidian_ai.tools.graph.entity_store")
-def test_search_entities_with_type_filter(mock_entity_store, mock_chroma):
-    mock_chroma._collection = None
-    mock_entity_store.search.return_value = [
-        {"path": "note1.md", "entity_name": "Alice", "entity_type": "Person",
-         "snippet": "Alice worked on", "confidence": 0.95},
-    ]
-    result = mcp_server.search_entities("Alice", entity_type="Person")
-    assert len(result) == 1
-
-
-@patch("obsidian_ai.tools.graph.chroma_store")
-@patch("obsidian_ai.tools.graph.entity_store")
-def test_get_note_entities(mock_entity_store, mock_chroma):
+@patch("obsidian_ai.tools.entities.chroma_store")
+@patch("obsidian_ai.tools.entities.entity_store")
+def test_entities_note_entities(mock_entity_store, mock_chroma):
     mock_chroma._collection = None
     mock_entity_store.get_note_entities.return_value = [
         {"entity_name": "Alice", "entity_type": "Person", "confidence": 0.95},
         {"entity_name": "ProjectX", "entity_type": "Project", "confidence": 0.9},
     ]
-    result = mcp_server.get_note_entities("note1.md")
-    assert len(result) == 2
-    assert result[0]["entity_name"] == "Alice"
+    result = mcp_server.entities(action="note_entities", path="note1.md")
+    import json
+    data = json.loads(result)
+    assert len(data) == 2
+    assert data[0]["entity_name"] == "Alice"
 
 
-def test_get_entity_types():
-    result = mcp_server.get_entity_types()
-    assert isinstance(result, list)
-    assert "Person" in result
-    assert "Hardware" in result
+def test_entities_types():
+    result = mcp_server.entities(action="types")
+    import json
+    data = json.loads(result)
+    assert isinstance(data, list)
+    assert "Person" in data
+    assert "Hardware" in data
 
 
-# ── health_check ───────────────────────────────────────────────────
+# ── Invalid action handling ──────────────────────────────────────────
 
 
-@patch("obsidian_ai.tools.misc.llm_client")
-@patch("obsidian_ai.tools.misc.obsidian_client")
-@patch("obsidian_ai.tools.misc.chroma_store")
-@patch("obsidian_ai.tools.misc.config")
-def test_health_check(mock_config, mock_chroma, mock_obsidian, mock_llm):
-    mock_config.ollama_embed_model = "nomic-embed-text"
-    mock_config.ollama_chat_model = "qwen3:8b"
-    mock_llm.check_health.return_value = {
-        "ollama": {"status": "ok", "embed_model": "nomic-embed-text", "chat_model": "qwen3:4b"},
-        "embed_model_available": True,
-        "chat_model_available": True,
-    }
-    mock_obsidian.list_all_notes.return_value = ["note1.md", "note2.md"]
-    mock_chroma.count.return_value = 42
-    result = mcp_server.health_check()
-    assert result["ollama"]["status"] == "ok"
-    assert result["ollama"]["embed_model"] == "nomic-embed-text"
+def test_notes_invalid_action():
+    result = mcp_server.notes(action="fly")
+    assert "Error" in result
+    assert "Invalid action" in result

@@ -2,7 +2,9 @@
   "edges": {
     "Me/Courses/Cyber security courses.md": [],
     "Me/Courses/Data analyst courses.md": [],
-    "Me/Death.md": [],
+    "Me/Death.md": [
+      "Me/Notes/Ba2olak eh.md"
+    ],
     "Me/Notes/Ba2olak eh.md": [
       "Me/Death.md"
     ],
@@ -584,6 +586,7 @@
       "Me/Poems/A future with you.md",
       "Me/Poems/For God you're enough.md",
       "Me/Poems/I need your clarity G.md",
+      "Subjects/God/Bible.md",
       "Subjects/God/Verses.md",
       "copilot/copilot-conversations/Growth_Journey_Reflection@20260324_192850.md",
       "copilot/copilot-conversations/Seeking_Information,_Feeling_Fear@20260513_120038.md",
@@ -1224,7 +1227,9 @@
     "__entity:Person:إبْرَاهِيمُ": [
       "Me/Verses.md"
     ],
-    "Me/Verses.md": [],
+    "Me/Verses.md": [
+      "Subjects/God/God.md"
+    ],
     "__entity:Person:أَيُّوبُ": [
       "Me/Verses.md"
     ],
@@ -1871,7 +1876,12 @@
       "Subjects/God/God.md"
     ],
     "Subjects/God/God.md": [
+      "Me/Verses.md",
+      "Subjects/God/Bible.md",
       "Subjects/God/Verses.md"
+    ],
+    "Subjects/God/Bible.md": [
+      "Subjects/God/God.md"
     ]
   },
   "title_map": {
@@ -2034,6 +2044,9 @@
     "fear template": "management/templates/Fear template.md",
     "todos": "todos.md",
     "friends - maria": "Subjects/Maria/Friends - Maria.md",
-    "god": "Subjects/God/God.md"
+    "god": "Subjects/God/God.md",
+    "bible": "Subjects/God/Bible.md",
+    "mohsen 2": ".trash/Mohsen 2.md",
+    "you are so beautiful": ".trash/You Are So beautiful.md"
   }
 }

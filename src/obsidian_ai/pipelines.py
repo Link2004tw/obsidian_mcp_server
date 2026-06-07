@@ -571,93 +571,14 @@ def summarize_topic(
 
 def route_query(query_: str) -> str:
     """Route a user query to the appropriate tool via LLM agent.
+    Now used only as a fallback path; ``ask`` tool has its own routing.
 
-    Sends the query to the LLM with the ``AGENT_SYSTEM`` prompt, which
-    decides which tool to use and returns structured JSON. The chosen
-    tool is then executed and its result is returned.
-
-    This avoids circular imports by lazy-importing ``mcp_server`` functions.
+    This avoids circular imports by lazy-importing the consolidated tool fns.
     """
     log.info("route_query — %s", query_)
     try:
-        from .mcp_server import (
-            ask_vault,
-            read_note,
-            related_notes,
-            search_entities,
-            search_notes,
-            summarize_topic,
-        )
+        from .tools.ask import ask
     except Exception as e:
-        log.warning("route_query — failed to import MCP tools: %s", e)
-        # Fallback: use the query pipeline directly
+        log.warning("route_query — failed to import ask tool: %s", e)
         return query(ask=query_)
-
-    messages = [
-        {"role": "system", "content": AGENT_SYSTEM},
-        {"role": "user", "content": query_},
-    ]
-    try:
-        response = llm_client.chat(messages, think=False)
-        decision = json.loads(response)
-        if isinstance(decision, dict) and "tool" in decision:
-            pass
-        else:
-            raise ValueError("Unexpected format")
-    except (json.JSONDecodeError, ValueError):
-        # Try to extract JSON from markdown
-        match = re.search(r"\{[^{}]+\}", response, re.DOTALL)
-        if match:
-            try:
-                decision = json.loads(match.group())
-            except json.JSONDecodeError:
-                decision = {"tool": "ask_vault", "params": {"question": query_}}
-        else:
-            decision = {"tool": "ask_vault", "params": {"question": query_}}
-
-    tool = decision.get("tool", "ask_vault")
-    params = decision.get("params", {})
-
-    # Normalise param names (LLM may use descriptive aliases)
-    _param_aliases = {
-        "ask_vault": {"question": ["question", "query", "ask"]},
-        "search_notes": {"query": ["query", "q", "search", "question"]},
-        "summarize_topic": {"topic": ["topic", "subject", "query", "question"]},
-        "search_entities": {"entity_name": ["entity_name", "name", "entity", "query"]},
-        "related_notes": {"path": ["path", "note", "note_path"]},
-        "read_note": {"path": ["path", "note", "note_path"]},
-    }
-
-    normalize = _param_aliases.get(tool, {})
-    for canonical, aliases in normalize.items():
-        if canonical not in params:
-            for alias in aliases:
-                if alias in params:
-                    params[canonical] = params.pop(alias)
-                    break
-
-    log.info("route_query — routed to %s with %s", tool, params)
-
-    tool_map = {
-        "search_notes": lambda p: search_notes(**p),
-        "summarize_topic": lambda p: summarize_topic(**p),
-        "search_entities": lambda p: search_entities(**p),
-        "related_notes": lambda p: related_notes(**p),
-        "read_note": lambda p: read_note(**p),
-        "ask_vault": lambda p: ask_vault(**p),
-    }
-
-    handler = tool_map.get(tool)
-    if handler is None:
-        log.warning("route_query — unknown tool %s, falling back to ask_vault", tool)
-        return ask_vault(question=query_)
-
-    try:
-        result = handler(params)
-        if isinstance(result, list):
-            return json.dumps(result, ensure_ascii=False, indent=2)
-        return str(result)
-    except Exception as e:
-        log_error(log, f"route_query — tool {tool} failed", exc=e)
-        # Fallback
-        return ask_vault(question=query_)
+    return ask(query=query_)

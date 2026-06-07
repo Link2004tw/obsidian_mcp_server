@@ -753,29 +753,21 @@ Normalize a wiki-link target: strips display text after `|`, strips section anch
 
 ## mcp_server.py
 
-FastMCP server exposing **70 vault tools**. Tool implementations are organized in `tools/` submodules (`search.py`, `notes.py`, `graph.py`, `todos.py`, `misc.py`) and registered via `register_all(mcp)`. All path parameters are auto-normalized (absolute or vault-relative accepted). Backed by dedicated modules: `ranker.py` for unified ranking, `entity_relations.py` for entity relationships, `dashboard.py` for HTML output, and `todos.py` for the todo engine. Run with `python -m obsidian_ai.mcp_server`. See [MCP Server](mcp_server.md) for detailed tool documentation.
+FastMCP server exposing **9 consolidated tools** that replace ~50 specialized ones. Each tool (except `ask` and `tools`) uses an `action` parameter for dispatch. Implementation lives in `tools/` submodules (`ask.py`, `notes.py`, `tags.py`, `links.py`, `graph.py`, `entities.py`, `todo.py`, `admin.py`, `tools.py`) registered via `register_all(mcp)`. All path parameters are auto-normalized (absolute or vault-relative accepted). Backed by dedicated modules: `ranker.py` for unified ranking, `entity_relations.py` for entity relationships, `dashboard.py` for HTML output, and `todos.py` for the todo engine. Run with `python -m obsidian_ai.mcp_server`. See [MCP Server](mcp_server.md) for detailed tool documentation.
 
-### Tools by category
+### Tools (9 total)
 
-**Search & Retrieval:** `search_notes`, `batch_search`, `composite_search`, `retrieve_notes`, `find_duplicate_notes`, `search_by_tags`, `get_subject`, `search_entities`
-
-**Read & Write:** `read_note`, `write_note`, `list_all_notes`, `list_folder`, `list_folder_deep`, `read_note_by_title`, `add_note_to_subject`
-
-**Tags:** `add_tags`, `remove_tags`, `set_tags`, `batch_tag_notes`, `tag_notes`
-
-**Graph:** `create_backlink`, `get_backlinks`, `get_linked_notes`, `get_broken_links`, `get_orphan_notes`, `get_graph_stats`, `get_communities`, `get_note_community`, `multi_hop_traversal`, `related_notes`, `export_graph`, `get_shortest_path`
-
-**LLM:** `ask_vault`, `ask_agent`, `summarize_topic`, `tag_notes`
-
-**Entities:** `search_entities`, `get_note_entities`, `get_entity_types`, `get_entity_aliases`, `list_entities`, `add_entity`, `merge_entities`, `entity_timeline`, `related_entities`, `set_ranking_weights`, `get_ranking_weights`
-
-**Clustering:** `get_clusters`
-
-**Health:** `health_check`
-
-**Index:** `sync_index`, `get_index_stats`, `switch_embedding_model`
-
-**Todos:** `get_todos`, `add_todo`, `complete_todo`, `update_todo`, `delete_todo`, `sync_todos`, `get_todo_stats`, `ensure_todo_file`, `get_todos_by_priority`, `add_todo_from_natural_language`, `suggest_task_priority`, `suggest_due_date`, `suggest_task_splitting`, `get_overdue_summary`, `estimate_completion_date`, `get_todos_for_note`, `get_notes_for_todo`, `link_todo_to_notes`, `ask_vault_about_todo`, `ask_vault_about_todos`
+| Tool | Description |
+|------|-------------|
+| `ask(query)` | Universal discovery — routes any query to the right capability via LLM intent detection |
+| `notes(action, ...)` | CRUD for notes: read, write, list, list_folder, search_by_tags, read_by_title, add_note_to_subject |
+| `tags(action, ...)` | YAML frontmatter tag management: add, remove, set, batch_add, auto_suggest |
+| `links(action, ...)` | Wiki-link operations: create, backlinks, outgoing, broken |
+| `graph(action, ...)` | Graph exploration: communities, community_of, orphans, path, stats, related, traverse, export |
+| `entities(action, ...)` | Named entity management: search, note_entities, list, aliases, timeline, related, add, merge, change_type, types, weights_get/set, import |
+| `todo(action, ...)` | Task management: list, add, complete, update, delete, stats, suggestions, link, ask |
+| `admin(action, ...)` | System administration: health, reindex, stats, switch_model, sync_todos |
+| `tools()` | Tool discovery — lists names, descriptions, and parameter schemas for all tools |
 
 ---
 
